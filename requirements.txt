@@ -3,9 +3,10 @@ streamlit-option-menu
 pandas
 requests
 numpy
-st-aggrid
+streamlit-aggrid
 plotly
 beautifulsoup4
 lxml
 openpyxl
 xlsxwriter
+
