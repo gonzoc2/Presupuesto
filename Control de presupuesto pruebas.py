@@ -47,11 +47,11 @@ def ct(texto):
 
 
 base_ppt = st.secrets["urls"]["presupuesto"]
-Usuarios_url = st.secrets["urls"]["usuarios"]
+Usuarios_url = st.secrets["urls"]["Usuarios ppt"]
 basereal = st.secrets["urls"]["base_2025"]
 mapeo_ppt_url = st.secrets["urls"]["mapeo"]
 proyectos_url = st.secrets["urls"]["proyectos"]
-ceco = st.secrets["urls"]["ceco"]
+cecos_url = st.secrets["urls"]["cecos"]
 
 
 meses = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
@@ -71,21 +71,34 @@ def validar_credenciales(df, username, password):
     return None, None
 
 def filtro_pro(col):
-    proyectos["proyectos"] = proyectos["proyectos"].astype(str).str.strip()
-    df_visibles = proyectos[proyectos["proyectos"].astype(str).isin(st.session_state["proyectos"])]
-    nombre_a_codigo = dict(zip(df_visibles["nombre"], df_visibles["proyectos"].astype(str)))
-    if st.session_state["proyectos"] == ["ESGARI"]:
-        opciones = ["ESGARI"] + proyectos["nombre"].tolist()
+    proyectos_local = proyectos.copy()
+    proyectos_local["proyectos"] = proyectos_local["proyectos"].astype(str).str.strip()
+    proyectos_local["nombre"] = proyectos_local["nombre"].astype(str).str.strip()
+    allowed = [str(x).strip() for x in st.session_state.get("proyectos", [])]
+    if allowed == ["ESGARI"]:
+        df_visibles = proyectos_local.copy()
+        opciones = ["ESGARI"] + df_visibles["nombre"].dropna().tolist()
         proyecto_nombre = col.selectbox("Selecciona un proyecto", opciones)
+
         if proyecto_nombre == "ESGARI":
-            proyecto_codigo = proyectos["proyectos"].astype(str).tolist()
+            proyecto_codigo = df_visibles["proyectos"].tolist()  # todos
         else:
-            proyecto_codigo = proyectos.loc[proyectos["nombre"] == proyecto_nombre, "proyectos"].astype(str).tolist()
+            proyecto_codigo = df_visibles.loc[df_visibles["nombre"] == proyecto_nombre, "proyectos"].tolist()
+
     else:
-        proyecto_nombre = col.selectbox("Selecciona un proyecto", list(nombre_a_codigo.keys()))
-        proyecto_codigo = [nombre_a_codigo[proyecto_nombre]]
+        df_visibles = proyectos_local[proyectos_local["proyectos"].isin(allowed)].copy()
+        if df_visibles.empty:
+            st.error("No hay proyectos visibles para este usuario. Revisa st.session_state['proyectos'] vs catálogo 'proyectos'.")
+            st.stop()
+        nombres_visibles = df_visibles["nombre"].dropna().unique().tolist()
+        proyecto_nombre = col.selectbox("Selecciona un proyecto", nombres_visibles)
+        proyecto_codigo = df_visibles.loc[df_visibles["nombre"] == proyecto_nombre, "proyectos"].astype(str).tolist()
+    if not proyecto_codigo:
+        st.error("No se encontró código para el proyecto seleccionado. Revisa duplicados o nombres en el catálogo.")
+        st.stop()
 
     return proyecto_codigo, proyecto_nombre
+
 
 def filtro_meses(col, df_ppt):
     meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
@@ -354,25 +367,32 @@ def estado_resultado(df_ppt, meses_seleccionado, proyecto_nombre, proyecto_codig
     return estado_resultado
 
 
-ceco = st.secrets["urls"]["ceco"]
-cecos = cargar_datos(ceco)
 def filtro_ceco(col):
-    cecos["ceco"] = cecos["ceco"].astype(str)
-    df_visibles = cecos[cecos["ceco"].isin(st.session_state["cecos"])]
-    nombre_a_codigo = dict(zip(df_visibles["nombre"], df_visibles["ceco"]))
-    if st.session_state["cecos"] == ["ESGARI"]:
-        opciones = ["ESGARI"] + cecos["nombre"].tolist()
+    df_cecos = cargar_datos(cecos_url)
+    df_cecos["ceco"] = df_cecos["ceco"].astype(str).str.strip()
+    df_cecos["nombre"] = df_cecos["nombre"].astype(str).str.strip()
+
+    allowed = [str(x).strip() for x in st.session_state.get("cecos", [])]
+    if allowed == ["ESGARI"]:
+        opciones = ["ESGARI"] + df_cecos["nombre"].dropna().unique().tolist()
         ceco_nombre = col.selectbox("Selecciona un ceco", opciones)
+
         if ceco_nombre == "ESGARI":
-            ceco_codigo = cecos["ceco"].tolist()
-
+            ceco_codigo = df_cecos["ceco"].dropna().unique().tolist()
         else:
-            ceco_codigo = cecos[cecos["nombre"] == ceco_nombre]["ceco"].values.tolist()
-    else:
-        ceco_nombre = col.selectbox("Selecciona un ceco", list(nombre_a_codigo.keys()))
-        ceco_codigo = [nombre_a_codigo[ceco_nombre]]
+            ceco_codigo = df_cecos.loc[df_cecos["nombre"] == ceco_nombre, "ceco"].dropna().unique().tolist()
 
+        return ceco_codigo, ceco_nombre
+    df_visibles = df_cecos[df_cecos["ceco"].isin(allowed)].copy()
+    if df_visibles.empty:
+        col.error("No tienes CeCos asignados o no coinciden con el catálogo.")
+        return [], None
+    nombre_a_codigo = dict(zip(df_visibles["nombre"], df_visibles["ceco"]))
+    opciones = list(nombre_a_codigo.keys())
+    ceco_nombre = col.selectbox("Selecciona un ceco", opciones)
+    ceco_codigo = [nombre_a_codigo.get(ceco_nombre)] if ceco_nombre in nombre_a_codigo else []
     return ceco_codigo, ceco_nombre
+
 
 def tabla_comparativa(tipo_com, df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, clasificacion, categoria, titulo):
     st.write(titulo)
@@ -736,40 +756,39 @@ else:
 
     if selected == "PPT YTD":
 
-        def tabla_ppt_ytd(df_ppt, mes_corte=None):
+        def tabla_ppt_ytd(df_ppt):
             """
-            PPT YTD = acumulado desde ene. hasta el mes_corte.
-            Si mes_corte es None, toma el último mes disponible en df_ppt.
+            PPT YTD = acumulado desde ene. hasta el mes seleccionado.
             """
             meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
-            meses_disponibles = [mes for mes in meses_ordenados if mes in df_ppt["Mes_A"].unique().tolist()]
+            meses_disponibles = [m for m in meses_ordenados if m in df_ppt["Mes_A"].unique().tolist()]
 
             if not meses_disponibles:
-                st.error("No hay meses disponibles en df_ppt (columna Mes_A).")
+                st.error("No hay meses disponibles en df_ppt (Mes_A).")
                 return None
-
-            if mes_corte is None:
-                mes_corte = meses_disponibles[-1]
-
-            if mes_corte not in meses_disponibles:
-                st.error(f"mes_corte inválido: {mes_corte}")
-                return None
+            col_filtro, _ = st.columns([1, 5])
+            mes_corte = col_filtro.selectbox(
+                "Mes corte YTD",
+                meses_disponibles,
+                index=len(meses_disponibles) - 1
+            )
 
             idx = meses_disponibles.index(mes_corte)
-            meses_ytd = meses_disponibles[:idx + 1]
+            meses_ytd = meses_disponibles[: idx + 1]
 
-            # Resumen por proyecto (excluyendo algunos)
+            # ----------- LOGICA ORIGINAL (SIN CAMBIOS) ----------
             resumen_proyectos = {
                 nombre: estado_resultado(
                     df_ppt,
                     meses_ytd,
                     nombre,
-                    [str(codigo)],  
+                    [str(codigo)],
                     list_pro
                 )
                 for nombre, codigo in zip(proyectos["nombre"], proyectos["proyectos"].astype(str))
                 if nombre not in {"OFICINAS LUNA", "PATIO", "OFICINAS ANDARES"}
             }
+
             codigos = proyectos["proyectos"].astype(str).tolist()
             resumen_proyectos["ESGARI"] = estado_resultado(df_ppt, meses_ytd, "ESGARI", codigos, list_pro)
 
@@ -790,7 +809,7 @@ else:
                 ("Margen EBT %", "por_ebt"),
             ]
 
-            # Construir tabla
+            # ----------- CONSTRUIR TABLA ----------
             df_data = []
             for nombre_metrica, clave in metricas_seleccionadas:
                 fila = {"Métrica": nombre_metrica}
@@ -799,8 +818,49 @@ else:
                 df_data.append(fila)
 
             df_tabla = pd.DataFrame(df_data)
-            st.subheader(f"PPT YTD")
-            st.dataframe(df_tabla, use_container_width=True)
+            ratios = {
+                "Margen U.B. %", "Margen U.O. %", "Margen EBIT %", "Margen EBT %"
+            }
+
+            def fmt_money(x):
+                if pd.isna(x): return ""
+                return f"${float(x):,.0f}"
+
+            def fmt_pct(x):
+                if pd.isna(x): return ""
+                return f"{float(x)*100:,.2f}%"
+
+            df_fmt = df_tabla.copy()
+            for i in range(len(df_fmt)):
+                met = df_fmt.loc[i, "Métrica"]
+                for col in df_fmt.columns:
+                    if col == "Métrica":
+                        continue
+                    df_fmt.loc[i, col] = fmt_pct(df_tabla.loc[i, col]) if met in ratios else fmt_money(df_tabla.loc[i, col])
+
+            def style_row(row):
+                if row["Métrica"] in ratios:
+                    return ["background-color: #001F5B; color: white; font-weight: 700;"] * len(row)
+                return [""] * len(row)
+
+            st.subheader(f"PPT YTD al mes de {mes_corte}")
+
+            # Header azul
+            st.markdown("""
+                <style>
+                div[data-testid="stDataFrame"] thead tr th {
+                    background-color: #001F5B !important;
+                    color: white !important;
+                    font-weight: 800 !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+
+            st.dataframe(
+                df_fmt.style.apply(style_row, axis=1),
+                use_container_width=True,
+                height=520
+            )
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df_tabla.to_excel(writer, index=False, sheet_name="Resumen")
@@ -815,7 +875,6 @@ else:
 
             return df_tabla
         tabla_ppt_ytd(df_ppt, mes_corte=None)
-
 
     elif selected == "PPT VS ACTUAL":
 
@@ -995,7 +1054,7 @@ else:
 
             st.plotly_chart(fig, use_container_width=True)
         col1, col2 = st.columns(2)
-        meses_seleccionado = filtro_meses(col1, df_ppt, selected)
+        meses_seleccionado = filtro_meses(col1, df_ppt)
         proyecto_codigo, proyecto_nombre = filtro_pro(col2)
 
         # para reusar tu función que espera lista:
@@ -1419,7 +1478,7 @@ else:
                 )
 
                 st.plotly_chart(fig, use_container_width=True)
-            return tabla
+            return tabla_Consultas  
         
     elif selected == "Meses PPT":
         def mostrar_meses_ppt(df_ppt):
@@ -1497,9 +1556,6 @@ else:
                     # Agregar columna Promedio
                     columnas_meses = [col for col in df_resultado.columns if col != "Total"]
                     df_resultado["Promedio"] = df_resultado[columnas_meses].mean(axis=1, skipna=True)
-
-
-
                     return df_resultado
 
                 # Ejecutar función
@@ -1669,7 +1725,8 @@ else:
                     domLayout='normal',
                     height=600
                 )
-
+        mostrar_meses_ppt(df_ppt)
+        
     elif selected == "Variaciones":
         meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
         meses_disponibles = [m for m in meses_ordenados if (m in df_ppt["Mes_A"].unique()) or (m in df_real["Mes_A"].unique())]
@@ -1888,7 +1945,6 @@ else:
         )
 
         st.markdown("Utilidad Operativa")
-
         st.plotly_chart(fig, use_container_width=True)
 
 
