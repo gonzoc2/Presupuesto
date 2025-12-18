@@ -1,0 +1,11 @@
+streamlit>=1.32,<2.0
+streamlit-option-menu>=0.3.6
+pandas>=2.0,<3.0
+numpy>=1.24,<2.0
+requests>=2.31
+st-aggrid>=0.3.4
+plotly>=5.18
+beautifulsoup4>=4.12
+lxml>=4.9
+openpyxl>=3.1
+xlsxwriter>=3.1
