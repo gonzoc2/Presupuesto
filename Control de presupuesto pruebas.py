@@ -664,11 +664,13 @@ if not st.session_state["logged_in"]:
         submitted = st.form_submit_button("Iniciar sesión")
 
         if submitted:
-            user, rol = validar_credenciales(df_usuarios, username, password)
+            user, rol, proyectos, cecos = validar_credenciales(df_usuarios, username, password)
             if user:
                 st.session_state["logged_in"] = True
                 st.session_state["username"] = user
                 st.session_state["rol"] = rol
+                st.session_state["proyectos"] = proyectos
+                st.session_state["cecos"] = cecos
                 st.success("¡Inicio de sesión exitoso!")
                 st.rerun()
             else:
@@ -1946,6 +1948,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
