@@ -45,7 +45,7 @@ def ct(texto):
 
 
 base_ppt = st.secrets["urls"]["presupuesto"]
-Usuarios_url = st.secrets["urls"]["Usuarios ppt"]
+Usuarios_url = st.secrets["urls"]["usuarios"]
 basereal = st.secrets["urls"]["base_2025"]
 mapeo_ppt_url = st.secrets["urls"]["mapeo"]
 proyectos_url = st.secrets["urls"]["proyectos"]
@@ -1886,4 +1886,5 @@ else:
         )
 
         st.markdown("Utilidad Operativa")
+
         st.plotly_chart(fig, use_container_width=True)
