@@ -67,8 +67,10 @@ def validar_credenciales(df, username, password):
     usuario_row = df[(df["usuario"] == username) & (df["contraseña"] == password)]
     if not usuario_row.empty:
         fila = usuario_row.iloc[0]
-        return fila["usuario"], fila["rol"]
-    return None, None
+        proyectos = [p.strip() for p in str(fila["proyectos"]).split(",")]
+        cecos = [c.strip() for c in str(fila["cecos"]).split(",")]
+        return fila["usuario"], fila["rol"], proyectos, cecos
+    return None, None, None, None
 
 def filtro_pro(col):
     proyectos_local = proyectos.copy()
@@ -1948,6 +1950,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
