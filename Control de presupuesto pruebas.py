@@ -51,7 +51,7 @@ Usuarios_url = st.secrets["urls"]["usuarios"]
 basereal = st.secrets["urls"]["base_2025"]
 mapeo_ppt_url = st.secrets["urls"]["mapeo"]
 proyectos_url = st.secrets["urls"]["proyectos"]
-cecos_url = st.secrets["urls"]["cecos"]
+ceco = st.secrets["urls"]["ceco"]
 
 
 meses = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
@@ -1890,4 +1890,5 @@ else:
         st.markdown("Utilidad Operativa")
 
         st.plotly_chart(fig, use_container_width=True)
+
 
