@@ -806,7 +806,6 @@ else:
 
 
     if selected == "PPT YTD":
-
         def tabla_ppt_ytd(df_ppt):
             """
             PPT YTD = acumulado desde ene. hasta el mes seleccionado.
@@ -817,17 +816,17 @@ else:
             if not meses_disponibles:
                 st.error("No hay meses disponibles en df_ppt (Mes_A).")
                 return None
+
             col_filtro, _ = st.columns([1, 5])
             mes_corte = col_filtro.selectbox(
-                "Mes corte YTD",
+                "Selecciona un mes",
                 meses_disponibles,
-                index=len(meses_disponibles) - 1
+                index=len(meses_disponibles) - 1,
+                key="ppt_ytd_mes_corte"
             )
 
             idx = meses_disponibles.index(mes_corte)
             meses_ytd = meses_disponibles[: idx + 1]
-
-            # ----------- LOGICA ORIGINAL (SIN CAMBIOS) ----------
             resumen_proyectos = {
                 nombre: estado_resultado(
                     df_ppt,
@@ -859,19 +858,16 @@ else:
                 ("EBT", "ebt"),
                 ("Margen EBT %", "por_ebt"),
             ]
-
-            # ----------- CONSTRUIR TABLA ----------
             df_data = []
             for nombre_metrica, clave in metricas_seleccionadas:
-                fila = {"Métrica": nombre_metrica}
+                fila = {"Proyecto": nombre_metrica} 
                 for proyecto, datos in resumen_proyectos.items():
                     fila[proyecto] = datos.get(clave, None)
                 df_data.append(fila)
 
             df_tabla = pd.DataFrame(df_data)
-            ratios = {
-                "Margen U.B. %", "Margen U.O. %", "Margen EBIT %", "Margen EBT %"
-            }
+
+            ratios = {"Margen U.B. %", "Margen U.O. %", "Margen EBIT %", "Margen EBT %"}
 
             def fmt_money(x):
                 if pd.isna(x): return ""
@@ -880,38 +876,70 @@ else:
             def fmt_pct(x):
                 if pd.isna(x): return ""
                 return f"{float(x)*100:,.2f}%"
-
             df_fmt = df_tabla.copy()
             for i in range(len(df_fmt)):
-                met = df_fmt.loc[i, "Métrica"]
+                met = df_fmt.loc[i, "Proyecto"]
                 for col in df_fmt.columns:
-                    if col == "Métrica":
+                    if col == "Proyecto":
                         continue
                     df_fmt.loc[i, col] = fmt_pct(df_tabla.loc[i, col]) if met in ratios else fmt_money(df_tabla.loc[i, col])
-
-            def style_row(row):
-                if row["Métrica"] in ratios:
-                    return ["background-color: #001F5B; color: white; font-weight: 700;"] * len(row)
+            def highlight_ratios(row):
+                if row["Proyecto"] in ratios:
+                    return ["background-color:#00112B;color:white;font-weight:800;"] * len(row)
                 return [""] * len(row)
 
-            st.subheader(f"PPT YTD al mes de {mes_corte}")
+            styler = (
+                df_fmt.style
+                .apply(highlight_ratios, axis=1)
+                .set_table_styles([
+                    # Header azul
+                    {"selector": "thead th", "props": "background-color:#00112B;color:white;font-weight:900;text-align:center;font-size:12px;"},
+                    # Celdas
+                    {"selector": "td", "props": "font-size:12px; padding:6px;"},
+                ])
+            )
+            styler = styler.set_properties(subset=["Proyecto"], **{"text-align": "left", "font-weight": "700"})
+            num_cols = [c for c in df_fmt.columns if c != "Proyecto"]
+            styler = styler.set_properties(subset=num_cols, **{"text-align": "right"})
+            tabla_html = styler.to_html()
+            st.markdown(f"""
+            <style>
+                .ppt-ytd-wrap {{
+                    width: 100%;
+                    overflow-x: auto;
+                    border-radius: 8px;
+                }}
+                .ppt-ytd-wrap table {{
+                    border-collapse: collapse;
+                    width: max-content;
+                    min-width: 100%;
+                }}
+                .ppt-ytd-wrap th, .ppt-ytd-wrap td {{
+                    border: 1px solid #d0d0d0;
+                    white-space: nowrap;
+                }}
+                /* Sticky primera columna (Proyecto) */
+                .ppt-ytd-wrap th:first-child,
+                .ppt-ytd-wrap td:first-child {{
+                    position: sticky;
+                    left: 0;
+                    z-index: 3;
+                    background: #ffffff;
+                }}
+                /* Sticky header */
+                .ppt-ytd-wrap thead th {{
+                    position: sticky;
+                    top: 0;
+                    z-index: 4;
+                }}
+            </style>
 
-            # Header azul
-            st.markdown("""
-                <style>
-                div[data-testid="stDataFrame"] thead tr th {
-                    background-color: #001F5B !important;
-                    color: white !important;
-                    font-weight: 800 !important;
-                }
-                </style>
+            <div class="ppt-ytd-wrap">
+                {tabla_html}
+            </div>
             """, unsafe_allow_html=True)
 
-            st.dataframe(
-                df_fmt.style.apply(style_row, axis=1),
-                use_container_width=True,
-                height=520
-            )
+            # Descarga igual
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df_tabla.to_excel(writer, index=False, sheet_name="Resumen")
@@ -925,33 +953,120 @@ else:
             )
 
             return df_tabla
+
         tabla_ppt_ytd(df_ppt)
 
+
     elif selected == "PPT VS ACTUAL":
+
         def _tabla_resumen_style(df_resumen):
-            BLUE = "#00112B"
+            BLUE = "#1C4253"
+            GRIS_1 = "#FFFFFF"
+            GRIS_2 = "#F2F2F2"
+            BORDE = "#D0D0D0"
 
-            def color_margenes(row):
-                if "MARGEN" in str(row["CONCEPTO"]).upper():
-                    return [f"background-color: {BLUE}; color: white; font-weight: 700;"] * len(row)
-                return [""] * len(row)
+            df = df_resumen.copy()
 
-            return (
-                df_resumen.style
+            # filas margen (detecta "MARGEN" en concepto)
+            filas_margen = df["CONCEPTO"].astype(str).str.upper().str.contains("MARGEN", na=False)
+
+            styler = df.style
+
+            # formato numérico: si la fila es margen -> % ; si no -> $
+            money_cols = ["PPT", "REAL", "DIF"]
+            pct_col = ["VARIACIÓN %"]
+
+            def fmt_money(x):
+                try:
+                    return f"${float(x):,.2f}"
+                except:
+                    return ""
+
+            def fmt_pct(x):
+                try:
+                    return f"{float(x):,.2f}%"
+                except:
+                    return ""
+
+            # Aplicar formato por fila
+            def format_row(row):
+                is_margen = "MARGEN" in str(row["CONCEPTO"]).upper()
+                out = []
+                for col in df.columns:
+                    if col == "CONCEPTO":
+                        out.append(row[col])
+                    elif col in pct_col:
+                        out.append(fmt_pct(row[col]))
+                    elif col in money_cols:
+                        out.append(fmt_pct(row[col]) if is_margen else fmt_money(row[col]))
+                    else:
+                        out.append(row[col])
+                return out
+
+            df_fmt = df.copy()
+            df_fmt = pd.DataFrame(df_fmt.apply(format_row, axis=1).tolist(), columns=df.columns)
+
+            # Styler sobre df_fmt (ya formateado como strings)
+            styler = df_fmt.style
+
+            # estilos por fila: margen azul, zebra para las demás
+            def style_rows(row):
+                concepto = str(row["CONCEPTO"]).upper()
+                if "MARGEN" in concepto:
+                    return [f"background-color:{BLUE}; color:white; font-weight:800;"] * len(row)
+                # zebra
+                idx = row.name
+                bg = GRIS_1 if idx % 2 == 0 else GRIS_2
+                return [f"background-color:{bg}; color:black;"] * len(row)
+
+            styler = (
+                styler
+                .apply(style_rows, axis=1)
                 .set_table_styles([
+                    # header azul
                     {"selector": "thead th",
-                    "props": f"background-color: {BLUE}; color: white; font-weight: 700; font-size: 14px;"},
+                    "props": f"background-color:{BLUE};color:white;font-weight:900;font-size:13px;"
+                            f"border:1px solid {BORDE};text-align:center;position:sticky;top:0;z-index:5;"},
+                    # bordes + fuente
                     {"selector": "tbody td",
-                    "props": "font-size: 13px;"},
+                    "props": f"border:1px solid {BORDE};font-size:12px;"},
+                    {"selector": "table",
+                    "props": "border-collapse:collapse; width:100%;"},
                 ])
-                .apply(color_margenes, axis=1)
-                .format({
-                    "PPT": "${:,.2f}",
-                    "REAL": "${:,.2f}",
-                    "DIF": "${:,.2f}",
-                    "VARIACIÓN %": "{:.2f}%"
-                })
             )
+
+            # alineaciones (como excel)
+            styler = styler.set_properties(subset=["CONCEPTO"], **{"text-align": "left", "font-weight": "700"})
+            for c in ["PPT", "REAL", "DIF", "VARIACIÓN %"]:
+                if c in df_fmt.columns:
+                    styler = styler.set_properties(subset=[c], **{"text-align": "right"})
+
+            # render HTML para que se vea como excel
+            html = styler.to_html()
+
+            st.markdown(f"""
+            <style>
+                .excel-wrap {{
+                    width: 100%;
+                    overflow-x: auto;
+                    border-radius: 8px;
+                }}
+                .excel-wrap table {{
+                    min-width: 900px;
+                }}
+                .excel-wrap th, .excel-wrap td {{
+                    white-space: nowrap;
+                    padding: 6px 10px;
+                }}
+            </style>
+
+            <div class="excel-wrap">
+                {html}
+            </div>
+            """, unsafe_allow_html=True)
+
+            return df_resumen  # solo por consistencia, no se usa
+
         def tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo):
             if not meses_seleccionado:
                 st.error("Favor de seleccionar por lo menos un mes")
@@ -959,6 +1074,7 @@ else:
 
             ppt = estado_resultado(df_ppt, meses_seleccionado, proyecto_nombre, proyecto_codigo, list_pro)
             real = estado_resultado(df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, list_pro)
+
             metricas_base = [
                 ("Ingreso", "ingreso_proyecto", False),
                 ("COSS", "coss_pro", False),
@@ -994,7 +1110,6 @@ else:
                 ppt_val = float(ppt.get(clave, 0) or 0)
                 real_val = float(real.get(clave, 0) or 0)
 
-                # para ratios ya vienen como 0.XX -> convertir a %
                 if es_ratio:
                     ppt_show = ppt_val * 100
                     real_show = real_val * 100
@@ -1007,7 +1122,7 @@ else:
                     var_pct = (real_show / ppt_show - 1) * 100 if ppt_show != 0 else 0
 
                 filas.append({
-                    "CONCEPTO": concepto if not es_ratio else f"{concepto} %".replace(" % %", " %"),
+                    "CONCEPTO": (f"{concepto} %" if es_ratio else concepto).replace(" % %", " %"),
                     "PPT": ppt_show,
                     "REAL": real_show,
                     "DIF": dif,
@@ -1017,7 +1132,10 @@ else:
             df_out = pd.DataFrame(filas)
 
             st.subheader(f"PPT vs REAL — {proyecto_nombre}")
-            st.dataframe(_tabla_resumen_style(df_out), use_container_width=True)
+
+            # 👇 vista tipo Excel (HTML)
+            _tabla_resumen_style(df_out)
+
             return df_out
 
         # ---------- selector ----------
@@ -1026,7 +1144,9 @@ else:
         proyecto_codigo, proyecto_nombre = filtro_pro(col2)
 
         df_agrid = df_ppt
+
         tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo)
+
         if st.session_state.get("rol", "").lower() == "gerente":
             ventanas = ["INGRESO", "COSS", "G.ADMN"]
         else:
@@ -1074,6 +1194,7 @@ else:
                     "Categoria_A", "INGRESO POR REVALUACION CAMBIARIA",
                     "Tabla de Ingreso Financiero"
                 )
+
 
     elif selected == "Ingresos":
 
@@ -1457,7 +1578,7 @@ else:
             tabla["%"] = np.where(tabla["PPT"] != 0, (tabla["REAL"] / tabla["PPT"]) - 1, 0)
 
             # ---- map CeCo nombre ----
-            cecos_map = cecos.copy()
+            cecos_map = cecos[cecos["ceco"].astype(str).isin(cecos_sel)].copy()
             cecos_map["ceco"] = cecos_map["ceco"].astype(str).str.strip()
             cecos_map["nombre"] = cecos_map["nombre"].astype(str).str.strip()
 
@@ -2092,14 +2213,14 @@ else:
     elif selected == "Objetivos":
         objetivo_uo = {
             "ARRAYANES": 0.24,
-            "CENTRAL": 0.29,
+            "CENTRAL OTROS": 0.29,
             "CHALCO": 0.24,
-            "CONTINENTAL.": 0.30,
+            "CONTINENTAL": 0.30,
             "FLEX DEDICADO": 0.27,
             "FLEX SPOT": 0.24,
             "INTERNACIONAL FWD": 0.24,
             "WH": 0.21,
-            "MANZANILLO.": 0.25,
+            "MANZANILLO": 0.25,
             "BAJIO": 0.26,
             "ESGARI": 0.25
         }
@@ -2197,6 +2318,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
