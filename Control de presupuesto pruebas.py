@@ -372,7 +372,7 @@ def estado_resultado(df_ppt, meses_seleccionado, proyecto_nombre, proyecto_codig
     return estado_resultado
 
 
-def filtro_ceco(col):
+def filtro_ceco(col, df_cecos):
     df_cecos = cargar_datos(cecos_url)
     df_cecos["ceco"] = df_cecos["ceco"].astype(str).str.strip()
     df_cecos["nombre"] = df_cecos["nombre"].astype(str).str.strip()
@@ -784,8 +784,8 @@ else:
                 st.error("No hay meses disponibles en df_ppt (Mes_A).")
                 return None
 
-            col_filtro, _ = st.columns([1, 5])
-            mes_corte = col_filtro.selectbox(
+            # Hacer que el filtro se vea completo (sin usar columnas estrechas)
+            mes_corte = st.selectbox(
                 "Selecciona un mes",
                 meses_disponibles,
                 index=len(meses_disponibles) - 1,
@@ -843,6 +843,7 @@ else:
             def fmt_pct(x):
                 if pd.isna(x): return ""
                 return f"{float(x)*100:,.2f}%"
+
             df_fmt = df_tabla.copy()
             for i in range(len(df_fmt)):
                 met = df_fmt.loc[i, "Proyecto"]
@@ -850,6 +851,7 @@ else:
                     if col == "Proyecto":
                         continue
                     df_fmt.loc[i, col] = fmt_pct(df_tabla.loc[i, col]) if met in ratios else fmt_money(df_tabla.loc[i, col])
+
             def highlight_ratios(row):
                 if row["Proyecto"] in ratios:
                     return ["background-color:#00112B;color:white;font-weight:800;"] * len(row)
@@ -859,16 +861,18 @@ else:
                 df_fmt.style
                 .apply(highlight_ratios, axis=1)
                 .set_table_styles([
-                    # Header azul
-                    {"selector": "thead th", "props": "background-color:#00112B;color:white;font-weight:900;text-align:center;font-size:12px;"},
-                    # Celdas
-                    {"selector": "td", "props": "font-size:12px; padding:6px;"},
+                    # Header azul con fuente formal Times New Roman
+                    {"selector": "thead th", "props": "background-color:#00112B;color:white;font-weight:900;text-align:center;font-size:12px; font-family: 'Times New Roman', serif;"},
+                    # Celdas con fuente formal y tamaño adecuado
+                    {"selector": "td", "props": "font-size:12px; padding:6px; font-family: 'Times New Roman', serif;"},
                 ])
             )
             styler = styler.set_properties(subset=["Proyecto"], **{"text-align": "left", "font-weight": "700"})
             num_cols = [c for c in df_fmt.columns if c != "Proyecto"]
             styler = styler.set_properties(subset=num_cols, **{"text-align": "right"})
+
             tabla_html = styler.to_html()
+
             components.html(
                 f"""
                 <style>
@@ -876,6 +880,7 @@ else:
                         width: 100%;
                         overflow-x: auto;
                         border-radius: 8px;
+                        font-family: 'Times New Roman', serif;
                     }}
                     .ppt-ytd-wrap table {{
                         border-collapse: collapse;
@@ -908,7 +913,7 @@ else:
                 scrolling=True
             )
 
-            # Descarga igual
+            # Descarga igual, sin índices para que no se vean números de fila
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df_tabla.to_excel(writer, index=False, sheet_name="Resumen")
@@ -1021,7 +1026,7 @@ else:
                         border-radius: 8px;
                     }}
                     .excel-wrap table {{
-                        min-width: 900px;
+                        min-width: 1200px;
                         border-collapse: collapse;
                     }}
                     .excel-wrap th, .excel-wrap td {{
@@ -1123,30 +1128,30 @@ else:
             ventanas = ['INGRESO', 'COSS', 'G.ADMN', 'GASTOS FINANCIEROS', 'INGRESO FINANCIERO']
             tabs = st.tabs(ventanas)
             with tabs[0]:
-                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Categoria_A", "INGRESO", "Tabla de Ingresos")
+                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Categoria_A", "INGRESO", "Tabla de Ingresos")
 
             with tabs[1]:
-                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Clasificacion_A", "COSS", "Tabla de COSS")
+                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "COSS", "Tabla de COSS")
                     
             with tabs[2]:
-                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Clasificacion_A", "G.ADMN", "Tabla de G.ADMN")
+                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "G.ADMN", "Tabla de G.ADMN")
                     
             with tabs[3]:
-                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Clasificacion_A", "GASTOS FINANCIEROS", "Tabla de Gastos Financieros")
+                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "GASTOS FINANCIEROS", "Tabla de Gastos Financieros")
                     
             with tabs[4]:
-                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Categoria_A", "INGRESO POR REVALUACION CAMBIARIA", "Tabla de Ingreso Financiero")
+                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Categoria_A", "INGRESO POR REVALUACION CAMBIARIA", "Tabla de Ingreso Financiero")
         else:
             ventanas = ['INGRESO', 'COSS', 'G.ADMN']
             tabs = st.tabs(ventanas)
             with tabs[0]:
-                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Categoria_A", "INGRESO", "Tabla de Ingresos")
+                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Categoria_A", "INGRESO", "Tabla de Ingresos")
 
             with tabs[1]:
-                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Clasificacion_A", "COSS", "Tabla de COSS")
+                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "COSS", "Tabla de COSS")
                     
             with tabs[2]:
-                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Clasificacion_A", "G.ADMN", "Tabla de G.ADMN")  
+                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "G.ADMN", "Tabla de G.ADMN")  
 
 
     elif selected == "Ingresos":
@@ -1584,7 +1589,7 @@ else:
             df_real,
             meses_seleccionado,
             ceco_codigo,
-            df_cecos
+            ceco_nombre
         )
 
         def limpiar_texto_excel(s):
@@ -2215,6 +2220,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
