@@ -9,6 +9,9 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from plotly import graph_objects as go
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
+import streamlit.components.v1 as components
+import unicodedata
+import re
 
 
 st.set_page_config(
@@ -486,6 +489,7 @@ def seccion_analisis_especial_porcentual(
         ingreso_ppt = ingreso(df_ppt_sel, meses_sel, proy, proyecto_nombre)
         valor_ppt = funcion(df_ppt_sel, meses_sel, proy, proyecto_nombre)
         ppt_pct = (valor_ppt / ingreso_ppt * 100) if ingreso_ppt != 0 else 0.0
+
         df_real_sel = df_real[
             (df_real["Mes_A"].isin(meses_sel)) &
             (df_real["Proyecto_A"].astype(str).isin(proy)) &
@@ -497,13 +501,11 @@ def seccion_analisis_especial_porcentual(
         real_pct = (valor_real / ingreso_real * 100) if ingreso_real != 0 else 0.0
 
         dif_pp = real_pct - ppt_pct
-        pct_vs_ppt = ((real_pct / ppt_pct) - 1) * 100 if ppt_pct != 0 else 0.0
 
         df_out = pd.DataFrame([{
             "PPT %": round(ppt_pct, 2),
             "REAL %": round(real_pct, 2),
-            "DIF (pp)": round(dif_pp, 2),
-            "% vs PPT": round(pct_vs_ppt, 2)
+            "DIF (pp)": round(dif_pp, 2)
         }])
 
         def resaltar(row):
@@ -517,11 +519,11 @@ def seccion_analisis_especial_porcentual(
             df_out.style.apply(resaltar, axis=1).format({
                 "PPT %": "{:.2f}%",
                 "REAL %": "{:.2f}%",
-                "DIF (pp)": "{:.2f}",
-                "% vs PPT": "{:.2f}%"
+                "DIF (pp)": "{:.2f}"
             }),
             use_container_width=True
         )
+
 def seccion_analisis_por_clasificacion(
     df_ppt, df_real, ingreso,
     meses_seleccionado, proyecto_codigo, proyecto_nombre,
@@ -539,25 +541,12 @@ def seccion_analisis_por_clasificacion(
 
         proy = [str(x).strip() for x in proyecto_codigo]
         cecos = [str(x).strip() for x in ceco_codigo]
+
         df_ppt_sel = df_ppt[
             (df_ppt["Mes_A"].isin(meses_sel)) &
             (df_ppt["Proyecto_A"].astype(str).isin(proy)) &
             (df_ppt["CeCo_A"].astype(str).isin(cecos))
         ].copy()
-
-        ingreso_ppt_sel = ingreso(df_ppt_sel, meses_sel, proy, proyecto_nombre)
-
-        df_ppt_sel = df_ppt_sel[df_ppt_sel["Categoria_A"] != "INGRESO"]
-        df_ppt_sel = df_ppt_sel[df_ppt_sel["Clasificacion_A"] == clasificacion_nombre]
-
-        ppt_cla_nom = df_ppt_sel.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
-        ppt_cat_nom = df_ppt_sel.groupby(["Clasificacion_A", "Categoria_A"], as_index=False)["Neto_A"].sum()
-        ppt_cta_nom = df_ppt_sel.groupby(["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"], as_index=False)["Neto_A"].sum()
-        ppt_cla_nom["PPT %"] = np.where(ingreso_ppt_sel != 0, (ppt_cla_nom["Neto_A"] / ingreso_ppt_sel) * 100, 0.0)
-        ppt_cat_nom["PPT %"] = np.where(ingreso_ppt_sel != 0, (ppt_cat_nom["Neto_A"] / ingreso_ppt_sel) * 100, 0.0)
-        cat_map_ppt = dict(zip(ppt_cat_nom["Categoria_A"], ppt_cat_nom["Neto_A"]))
-        ppt_cta_nom["Cat_Total"] = ppt_cta_nom["Categoria_A"].map(cat_map_ppt).fillna(0)
-        ppt_cta_nom["PPT % CTA"] = np.where(ppt_cta_nom["Cat_Total"] != 0, (ppt_cta_nom["Neto_A"] / ppt_cta_nom["Cat_Total"]) * 100, 0.0)
 
         df_real_sel = df_real[
             (df_real["Mes_A"].isin(meses_sel)) &
@@ -565,96 +554,74 @@ def seccion_analisis_por_clasificacion(
             (df_real["CeCo_A"].astype(str).isin(cecos))
         ].copy()
 
+        ingreso_ppt_sel = ingreso(df_ppt_sel, meses_sel, proy, proyecto_nombre)
         ingreso_real_sel = ingreso(df_real_sel, meses_sel, proy, proyecto_nombre)
 
-        df_real_sel = df_real_sel[df_real_sel["Categoria_A"] != "INGRESO"]
-        df_real_sel = df_real_sel[df_real_sel["Clasificacion_A"] == clasificacion_nombre]
+        # Filtrar por clasificación y quitar categoría INGRESO
+        df_ppt_sel = df_ppt_sel[(df_ppt_sel["Clasificacion_A"] == clasificacion_nombre) & (df_ppt_sel["Categoria_A"] != "INGRESO")]
+        df_real_sel = df_real_sel[(df_real_sel["Clasificacion_A"] == clasificacion_nombre) & (df_real_sel["Categoria_A"] != "INGRESO")]
+
+        ppt_cla_nom = df_ppt_sel.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
+        ppt_cat_nom = df_ppt_sel.groupby(["Categoria_A"], as_index=False)["Neto_A"].sum()
+        ppt_cta_nom = df_ppt_sel.groupby(["Categoria_A", "Cuenta_Nombre_A"], as_index=False)["Neto_A"].sum()
+
         real_cla_nom = df_real_sel.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
-        real_cat_nom = df_real_sel.groupby(["Clasificacion_A", "Categoria_A"], as_index=False)["Neto_A"].sum()
-        real_cta_nom = df_real_sel.groupby(["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"], as_index=False)["Neto_A"].sum()
+        real_cat_nom = df_real_sel.groupby(["Categoria_A"], as_index=False)["Neto_A"].sum()
+        real_cta_nom = df_real_sel.groupby(["Categoria_A", "Cuenta_Nombre_A"], as_index=False)["Neto_A"].sum()
+
+        ppt_cla_nom["PPT %"] = np.where(ingreso_ppt_sel != 0, (ppt_cla_nom["Neto_A"] / ingreso_ppt_sel) * 100, 0.0)
+        ppt_cat_nom["PPT %"] = np.where(ingreso_ppt_sel != 0, (ppt_cat_nom["Neto_A"] / ingreso_ppt_sel) * 100, 0.0)
+
         real_cla_nom["REAL %"] = np.where(ingreso_real_sel != 0, (real_cla_nom["Neto_A"] / ingreso_real_sel) * 100, 0.0)
         real_cat_nom["REAL %"] = np.where(ingreso_real_sel != 0, (real_cat_nom["Neto_A"] / ingreso_real_sel) * 100, 0.0)
+
+        cat_map_ppt = dict(zip(ppt_cat_nom["Categoria_A"], ppt_cat_nom["Neto_A"]))
         cat_map_real = dict(zip(real_cat_nom["Categoria_A"], real_cat_nom["Neto_A"]))
+
+        ppt_cta_nom["Cat_Total"] = ppt_cta_nom["Categoria_A"].map(cat_map_ppt).fillna(0)
+        ppt_cta_nom["PPT % CTA"] = np.where(ppt_cta_nom["Cat_Total"] != 0, (ppt_cta_nom["Neto_A"] / ppt_cta_nom["Cat_Total"]) * 100, 0.0)
+
         real_cta_nom["Cat_Total"] = real_cta_nom["Categoria_A"].map(cat_map_real).fillna(0)
         real_cta_nom["REAL % CTA"] = np.where(real_cta_nom["Cat_Total"] != 0, (real_cta_nom["Neto_A"] / real_cta_nom["Cat_Total"]) * 100, 0.0)
+
         df_cla = ppt_cla_nom.merge(real_cla_nom[["Clasificacion_A", "REAL %"]], on="Clasificacion_A", how="outer").fillna(0)
         df_cla["DIF (pp)"] = df_cla["REAL %"] - df_cla["PPT %"]
-        df_cla["% vs PPT"] = np.where(df_cla["PPT %"] != 0, (df_cla["REAL %"] / df_cla["PPT %"] - 1) * 100, 0.0)
 
+        df_cat = ppt_cat_nom.merge(real_cat_nom[["Categoria_A", "REAL %"]], on=["Categoria_A"], how="outer").fillna(0)
+        df_cat["DIF (pp)"] = df_cat["REAL %"] - df_cat["PPT %"]
+
+        df_cta = ppt_cta_nom.merge(
+            real_cta_nom[["Categoria_A", "Cuenta_Nombre_A", "REAL % CTA"]],
+            on=["Categoria_A", "Cuenta_Nombre_A"],
+            how="outer"
+        ).fillna(0)
+        df_cta["DIF (pp)"] = df_cta["REAL % CTA"] - df_cta["PPT % CTA"]
+
+        df_cat_out = df_cat[["Categoria_A", "PPT %", "REAL %", "DIF (pp)"]].copy()
+        df_cat_out["Cuenta_Nombre_A"] = ""
+
+        df_cta_out = df_cta[["Categoria_A", "Cuenta_Nombre_A", "PPT % CTA", "REAL % CTA", "DIF (pp)"]].copy()
+        df_cta_out = df_cta_out.rename(columns={"PPT % CTA": "PPT %", "REAL % CTA": "REAL %"})
+
+        df_out = pd.concat([df_cat_out, df_cta_out], ignore_index=True)
         def resaltar(row):
             if row["REAL %"] > row["PPT %"]:
                 return ['background-color: red; color: white'] * len(row)
             elif row["REAL %"] < row["PPT %"]:
                 return ['background-color: green; color: black'] * len(row)
             return [''] * len(row)
-
-        st.markdown("### Resumen Clasificación (sobre Ingresos)")
         st.dataframe(
-            df_cla.set_index("Clasificacion_A").style
-                .apply(resaltar, axis=1)
-                .format({
-                    "PPT %": "{:.2f}%",
-                    "REAL %": "{:.2f}%",
-                    "DIF (pp)": "{:.2f}",
-                    "% vs PPT": "{:.2f}%"
-                }),
+            df_out.style.format({
+                "PPT %": "{:.2f}%",
+                "REAL %": "{:.2f}%",
+                "DIF (pp)": "{:.2f}"
+            }),
             use_container_width=True
         )
-        df_cat = ppt_cat_nom.merge(real_cat_nom[["Clasificacion_A", "Categoria_A", "REAL %"]], on=["Clasificacion_A", "Categoria_A"], how="outer").fillna(0)
-        df_cat["DIF (pp)"] = df_cat["REAL %"] - df_cat["PPT %"]
-        df_cat["% vs PPT"] = np.where(df_cat["PPT %"] != 0, (df_cat["REAL %"] / df_cat["PPT %"] - 1) * 100, 0.0)
 
-        df_cta = ppt_cta_nom.merge(
-            real_cta_nom[["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A", "REAL % CTA"]],
-            on=["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"],
-            how="outer"
-        ).fillna(0)
-
-        df_cta["DIF (pp)"] = df_cta["REAL % CTA"] - df_cta["PPT % CTA"]
-        df_cta["% vs PPT"] = np.where(df_cta["PPT % CTA"] != 0, (df_cta["REAL % CTA"] / df_cta["PPT % CTA"] - 1) * 100, 0.0)
-
-        df_cat_out = df_cat[["Categoria_A", "PPT %", "REAL %", "DIF (pp)", "% vs PPT"]].copy()
-        df_cat_out["Cuenta_Nombre_A"] = ""
-
-        df_cta_out = df_cta[["Categoria_A", "Cuenta_Nombre_A", "PPT % CTA", "REAL % CTA", "DIF (pp)", "% vs PPT"]].copy()
-        df_cta_out = df_cta_out.rename(columns={"PPT % CTA": "PPT %", "REAL % CTA": "REAL %"})
-
-        df_out = pd.concat([df_cat_out, df_cta_out], ignore_index=True)
-
-        gb = GridOptionsBuilder.from_dataframe(df_out)
-        gb.configure_default_column(groupable=True)
-        gb.configure_column("Categoria_A", rowGroup=True, hide=True)
-        gb.configure_column("Cuenta_Nombre_A", header_name="Cuenta", pinned="left")
-
-        pct_formatter = JsCode("""
-            function(params) {
-                if (params.value === null || params.value === undefined) return '';
-                return params.value.toFixed(2) + ' %';
-            }
-        """)
-        for col in ["PPT %", "REAL %", "DIF (pp)", "% vs PPT"]:
-            gb.configure_column(col, type=["numericColumn"], aggFunc="last", valueFormatter=pct_formatter)
-
-        gridOptions = gb.build()
-        meses_key = "-".join(meses_sel)
-        grid_key = f"agrid_cla_{clasificacion_nombre}_{'-'.join(proy)}_{'-'.join(cecos)}_{meses_key}"
-
-        st.markdown("### Categoría (sobre ingresos) + Cuenta (% de su Categoría)")
-        AgGrid(
-            df_out,
-            gridOptions=gridOptions,
-            allow_unsafe_jscode=True,
-            enable_enterprise_modules=True,
-            height=520,
-            use_checkbox=False,
-            fit_columns_on_grid_load=True,
-            theme="streamlit",
-            key=grid_key
-        )
 def agrid_ingreso_con_totales(df):
     df = df.copy()
 
-    # Nos quedamos solo con INGRESO (si quieres otras categorías, quita este filtro)
     df_g = (
         df[df["Categoria_A"] == "INGRESO"]
         .groupby(["Categoria_A", "Cuenta_A", "Cuenta_Nombre_A"], as_index=False)
@@ -902,42 +869,44 @@ else:
             num_cols = [c for c in df_fmt.columns if c != "Proyecto"]
             styler = styler.set_properties(subset=num_cols, **{"text-align": "right"})
             tabla_html = styler.to_html()
-            st.markdown(f"""
-            <style>
-                .ppt-ytd-wrap {{
-                    width: 100%;
-                    overflow-x: auto;
-                    border-radius: 8px;
-                }}
-                .ppt-ytd-wrap table {{
-                    border-collapse: collapse;
-                    width: max-content;
-                    min-width: 100%;
-                }}
-                .ppt-ytd-wrap th, .ppt-ytd-wrap td {{
-                    border: 1px solid #d0d0d0;
-                    white-space: nowrap;
-                }}
-                /* Sticky primera columna (Proyecto) */
-                .ppt-ytd-wrap th:first-child,
-                .ppt-ytd-wrap td:first-child {{
-                    position: sticky;
-                    left: 0;
-                    z-index: 3;
-                    background: #ffffff;
-                }}
-                /* Sticky header */
-                .ppt-ytd-wrap thead th {{
-                    position: sticky;
-                    top: 0;
-                    z-index: 4;
-                }}
-            </style>
+            components.html(
+                f"""
+                <style>
+                    .ppt-ytd-wrap {{
+                        width: 100%;
+                        overflow-x: auto;
+                        border-radius: 8px;
+                    }}
+                    .ppt-ytd-wrap table {{
+                        border-collapse: collapse;
+                        width: max-content;
+                        min-width: 100%;
+                    }}
+                    .ppt-ytd-wrap th, .ppt-ytd-wrap td {{
+                        border: 1px solid #d0d0d0;
+                        white-space: nowrap;
+                    }}
+                    .ppt-ytd-wrap th:first-child,
+                    .ppt-ytd-wrap td:first-child {{
+                        position: sticky;
+                        left: 0;
+                        z-index: 3;
+                        background: #ffffff;
+                    }}
+                    .ppt-ytd-wrap thead th {{
+                        position: sticky;
+                        top: 0;
+                        z-index: 4;
+                    }}
+                </style>
 
-            <div class="ppt-ytd-wrap">
-                {tabla_html}
-            </div>
-            """, unsafe_allow_html=True)
+                <div class="ppt-ytd-wrap">
+                    {tabla_html}
+                </div>
+                """,
+                height=600,
+                scrolling=True
+            )
 
             # Descarga igual
             output = io.BytesIO()
@@ -1043,28 +1012,31 @@ else:
 
             # render HTML para que se vea como excel
             html = styler.to_html()
+            components.html(
+                f"""
+                <style>
+                    .excel-wrap {{
+                        width: 100%;
+                        overflow-x: auto;
+                        border-radius: 8px;
+                    }}
+                    .excel-wrap table {{
+                        min-width: 900px;
+                        border-collapse: collapse;
+                    }}
+                    .excel-wrap th, .excel-wrap td {{
+                        white-space: nowrap;
+                        padding: 6px 10px;
+                    }}
+                </style>
 
-            st.markdown(f"""
-            <style>
-                .excel-wrap {{
-                    width: 100%;
-                    overflow-x: auto;
-                    border-radius: 8px;
-                }}
-                .excel-wrap table {{
-                    min-width: 900px;
-                }}
-                .excel-wrap th, .excel-wrap td {{
-                    white-space: nowrap;
-                    padding: 6px 10px;
-                }}
-            </style>
-
-            <div class="excel-wrap">
-                {html}
-            </div>
-            """, unsafe_allow_html=True)
-
+                <div class="excel-wrap">
+                    {html}
+                </div>
+                """,
+                height=600,
+                scrolling=True
+            )
             return df_resumen  # solo por consistencia, no se usa
 
         def tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo):
@@ -1147,53 +1119,34 @@ else:
 
         tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo)
 
-        if st.session_state.get("rol", "").lower() == "gerente":
-            ventanas = ["INGRESO", "COSS", "G.ADMN"]
-        else:
-            ventanas = ["INGRESO", "COSS", "G.ADMN", "GASTOS FINANCIEROS", "INGRESO FINANCIERO"]
+        if st.session_state['rol'] == "director" or st.session_state['rol'] == "admin":
+            ventanas = ['INGRESO', 'COSS', 'G.ADMN', 'GASTOS FINANCIEROS', 'INGRESO FINANCIERO']
+            tabs = st.tabs(ventanas)
+            with tabs[0]:
+                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Categoria_A", "INGRESO", "Tabla de Ingresos")
 
-        tabs = st.tabs(ventanas)
-
-        with tabs[0]:
-            tabla_comparativa(
-                "PPT", df_agrid, df_real,
-                proyecto_codigo, meses_seleccionado,
-                "Categoria_A", "INGRESO",
-                "Tabla de Ingresos"
-            )
-
-        with tabs[1]:
-            tabla_comparativa(
-                "PPT", df_agrid, df_real,
-                proyecto_codigo, meses_seleccionado,
-                "Clasificacion_A", "COSS",
-                "Tabla de COSS"
-            )
-
-        with tabs[2]:
-            tabla_comparativa(
-                "PPT", df_agrid, df_real,
-                proyecto_codigo, meses_seleccionado,
-                "Clasificacion_A", "G.ADMN",
-                "Tabla de G.ADMN"
-            )
-
-        if st.session_state.get("rol", "").lower() != "gerente":
+            with tabs[1]:
+                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Clasificacion_A", "COSS", "Tabla de COSS")
+                    
+            with tabs[2]:
+                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Clasificacion_A", "G.ADMN", "Tabla de G.ADMN")
+                    
             with tabs[3]:
-                tabla_comparativa(
-                    "PPT", df_agrid, df_real,
-                    proyecto_codigo, meses_seleccionado,
-                    "Clasificacion_A", "GASTOS FINANCIEROS",
-                    "Tabla de Gastos Financieros"
-                )
-
+                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Clasificacion_A", "GASTOS FINANCIEROS", "Tabla de Gastos Financieros")
+                    
             with tabs[4]:
-                tabla_comparativa(
-                    "PPT", df_agrid, df_real,
-                    proyecto_codigo, meses_seleccionado,
-                    "Categoria_A", "INGRESO POR REVALUACION CAMBIARIA",
-                    "Tabla de Ingreso Financiero"
-                )
+                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Categoria_A", "INGRESO POR REVALUACION CAMBIARIA", "Tabla de Ingreso Financiero")
+        else:
+            ventanas = ['INGRESO', 'COSS', 'G.ADMN']
+            tabs = st.tabs(ventanas)
+            with tabs[0]:
+                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Categoria_A", "INGRESO", "Tabla de Ingresos")
+
+            with tabs[1]:
+                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Clasificacion_A", "COSS", "Tabla de COSS")
+                    
+            with tabs[2]:
+                tabla_comparativa(df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, "Clasificacion_A", "G.ADMN", "Tabla de G.ADMN")  
 
 
     elif selected == "Ingresos":
@@ -1506,8 +1459,6 @@ else:
                     "COSS",
                     "OH - Tabla COSS"
                 )
-                st.markdown("#### AgGrid (COSS) — Totales por Categoría y Cuenta")
-                agrid_oh_con_totales(df_actual_oh, filtro_col="Clasificacion_A", filtro_val="COSS")
 
             with tabs[1]:
                 tabla_comparativa(
@@ -1520,12 +1471,9 @@ else:
                     "G.ADMN",
                     "OH - Tabla G.ADMN"
                 )
-                st.markdown("#### AgGrid (G.ADMN) — Totales por Categoría y Cuenta")
-                agrid_oh_con_totales(df_actual_oh, filtro_col="Clasificacion_A", filtro_val="G.ADMN")
-
-
     elif selected == "Departamentos":
-        def tabla_departamentos(df_ppt, df_real, meses_seleccionado, cecos_seleccionados, cecos):
+
+        def tabla_departamentos(df_ppt, df_real, meses_seleccionado, cecos_seleccionados, df_cecos):
             if not meses_seleccionado:
                 st.error("Favor de seleccionar por lo menos un mes")
                 return None
@@ -1533,20 +1481,20 @@ else:
             if not cecos_seleccionados:
                 st.error("Favor de seleccionar por lo menos un ceco")
                 return None
-
             proyectos_oh = ["8002", "8004"]
             clas_oh = ["COSS", "G.ADMN"]
-
             df_ppt = df_ppt.copy()
             df_real = df_real.copy()
+            df_cecos = df_cecos.copy()
+            for df in (df_ppt, df_real):
+                df["Proyecto_A"] = df["Proyecto_A"].astype(str).str.strip()
+                df["CeCo_A"] = df["CeCo_A"].astype(str).str.strip()
+                df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
 
-            df_ppt["Proyecto_A"] = df_ppt["Proyecto_A"].astype(str).str.strip()
-            df_real["Proyecto_A"] = df_real["Proyecto_A"].astype(str).str.strip()
-            df_ppt["CeCo_A"] = df_ppt["CeCo_A"].astype(str).str.strip()
-            df_real["CeCo_A"] = df_real["CeCo_A"].astype(str).str.strip()
+            df_cecos["ceco"] = df_cecos["ceco"].astype(str).str.strip()
+            df_cecos["nombre"] = df_cecos["nombre"].astype(str).str.strip()
 
             cecos_sel = [str(x) for x in cecos_seleccionados]
-
             df_ppt_f = df_ppt[
                 (df_ppt["Mes_A"].isin(meses_seleccionado)) &
                 (df_ppt["Proyecto_A"].isin(proyectos_oh)) &
@@ -1560,7 +1508,6 @@ else:
                 (df_real["Clasificacion_A"].isin(clas_oh)) &
                 (df_real["CeCo_A"].isin(cecos_sel))
             ].copy()
-
             ppt_por_ceco = (
                 df_ppt_f.groupby("CeCo_A", as_index=False)["Neto_A"]
                 .sum()
@@ -1573,30 +1520,26 @@ else:
                 .rename(columns={"Neto_A": "REAL"})
             )
 
-            tabla = ppt_por_ceco.merge(real_por_ceco, on="CeCo_A", how="outer").fillna(0)
+            tabla = (
+                ppt_por_ceco
+                .merge(real_por_ceco, on="CeCo_A", how="outer")
+                .fillna(0)
+            )
             tabla["DIF"] = tabla["REAL"] - tabla["PPT"]
             tabla["%"] = np.where(tabla["PPT"] != 0, (tabla["REAL"] / tabla["PPT"]) - 1, 0)
-
-            # ---- map CeCo nombre ----
-            cecos_map = cecos[cecos["ceco"].astype(str).isin(cecos_sel)].copy()
-            cecos_map["ceco"] = cecos_map["ceco"].astype(str).str.strip()
-            cecos_map["nombre"] = cecos_map["nombre"].astype(str).str.strip()
+            cecos_map = df_cecos[df_cecos["ceco"].isin(cecos_sel)][["ceco", "nombre"]]
 
             tabla = tabla.merge(
-                cecos_map.rename(columns={"ceco": "CeCo_A", "nombre": "ceco"})[["CeCo_A", "ceco"]],
+                cecos_map.rename(columns={"ceco": "CeCo_A", "nombre": "ceco"}),
                 on="CeCo_A",
                 how="left"
             )
             tabla["ceco"] = tabla["ceco"].fillna(tabla["CeCo_A"])
-
             tabla = tabla[["ceco", "REAL", "PPT", "DIF", "%"]]
-
-            # ---- total ----
             total_ppt = float(tabla["PPT"].sum())
             total_real = float(tabla["REAL"].sum())
             total_dif = total_real - total_ppt
             total_pct = (total_real / total_ppt - 1) if total_ppt != 0 else 0
-
             total_row = pd.DataFrame([{
                 "ceco": "TOTAL",
                 "REAL": total_real,
@@ -1606,10 +1549,9 @@ else:
             }])
 
             tabla_final = pd.concat([tabla, total_row], ignore_index=True)
-
             def color_fila(row):
                 if row["ceco"] == "TOTAL":
-                    return ["background-color: #1f4e79; color: white; font-weight: bold"] * len(row)
+                    return ["background-color:#1f4e79;color:white;font-weight:bold"] * len(row)
                 v = row["%"]
                 if v >= 0:
                     bg = "#92D050"
@@ -1617,7 +1559,7 @@ else:
                     bg = "#FFD966"
                 else:
                     bg = "#FF0000"
-                return [f"background-color: {bg}; color: black"] * len(row)
+                return [f"background-color:{bg};color:black"] * len(row)
 
             styled = (
                 tabla_final.style
@@ -1626,7 +1568,7 @@ else:
                     "REAL": "${:,.2f}",
                     "PPT": "${:,.2f}",
                     "DIF": "${:,.2f}",
-                    "%": "{:.2%}",
+                    "%": "{:.2%}"
                 })
             )
 
@@ -1637,97 +1579,22 @@ else:
         col1, col2 = st.columns(2)
         meses_seleccionado = filtro_meses(col1, df_ppt)
         ceco_codigo, ceco_nombre = filtro_ceco(col2)
+        tabla_final = tabla_departamentos(
+            df_ppt,
+            df_real,
+            meses_seleccionado,
+            ceco_codigo,
+            df_cecos
+        )
 
-        tabla_final = tabla_departamentos(df_ppt, df_real, meses_seleccionado, ceco_codigo, ceco_nombre)
-        if tabla_final is not None and not tabla_final.empty:
-
-            ventanas = ["Grafico PPT vs Real", "Grafico PPT", "Grafico Real"]
-            tabs = st.tabs(ventanas)
-
-            tabla_graf = (tabla_final[tabla_final["ceco"] != "TOTAL"].sort_values("DIF", ascending=False).copy())
-
-            with tabs[0]:
-                if not tabla_graf.empty:
-                    fig = go.Figure()
-                    fig.add_bar(x=tabla_graf["ceco"], y=tabla_graf["PPT"], name="PPT")
-                    fig.add_bar(x=tabla_graf["ceco"], y=tabla_graf["REAL"], name="REAL")
-                    fig.update_layout(
-                        title="PPT vs REAL por Departamento",
-                        xaxis_title="Departamento",
-                        yaxis_title="Monto",
-                        barmode="group",
-                        height=450,
-                        legend_title="Tipo",
-                        xaxis_tickangle=-25
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-            with tabs[1]:
-                if not tabla_graf.empty:
-                    fig = go.Figure()
-                    fig.add_bar(x=tabla_graf["ceco"], y=tabla_graf["PPT"], name="PPT")
-                    fig.update_layout(
-                        title="PPT por Departamento",
-                        xaxis_title="Departamento",
-                        yaxis_title="Monto PPT",
-                        height=450,
-                        xaxis_tickangle=-25
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-            with tabs[2]:
-                if not tabla_graf.empty:
-                    fig = go.Figure()
-                    fig.add_bar(x=tabla_graf["ceco"], y=tabla_graf["REAL"], name="REAL")
-                    fig.update_layout(
-                        title="REAL por Departamento",
-                        xaxis_title="Departamento",
-                        yaxis_title="Monto REAL",
-                        height=450,
-                        xaxis_tickangle=-25
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-            with st.expander("COSS y G.ADMN", expanded=False):
-
-                if not meses_seleccionado or not ceco_codigo:
-                    st.info("Selecciona meses y CeCo para ver el detalle.")
-                else:
-                    proyectos_oh = ["8002", "8004"]
-                    df_agrid_oh = df_ppt[
-                        (df_ppt["Proyecto_A"].astype(str).isin(proyectos_oh)) &
-                        (df_ppt["CeCo_A"].astype(str).isin([str(x) for x in ceco_codigo]))
-                    ].copy()
-
-                    df_actual_oh = df_real[
-                        (df_real["Proyecto_A"].astype(str).isin(proyectos_oh)) &
-                        (df_real["CeCo_A"].astype(str).isin([str(x) for x in ceco_codigo]))
-                    ].copy()
-
-                    st.markdown("### 🔹 COSS")
-                    tabla_comparativa(
-                        tipo_com="PPT",
-                        df_agrid=df_agrid_oh,
-                        df_ppt=df_actual_oh,
-                        proyecto_codigo=proyectos_oh,
-                        meses_seleccionado=meses_seleccionado,
-                        clasificacion="Clasificacion_A",
-                        categoria="COSS",
-                        titulo="COSS"
-                    )
-
-                    st.markdown("---")
-
-                    st.markdown("### 🔹 G.ADMN")
-                    tabla_comparativa(
-                        tipo_com="PPT",
-                        df_agrid=df_agrid_oh,
-                        df_ppt=df_actual_oh,
-                        proyecto_codigo=proyectos_oh,
-                        meses_seleccionado=meses_seleccionado,
-                        clasificacion="Clasificacion_A",
-                        categoria="G.ADMN",
-                        titulo="G.ADMN"
-                    )
+        def limpiar_texto_excel(s):
+            if pd.isna(s):
+                return ""
+            s = str(s)
+            s = unicodedata.normalize("NFKC", s)   
+            s = s.replace("\u00A0", " ")           
+            s = re.sub(r"\s+", " ", s)           
+            return s.strip().upper()
 
     elif selected == "Consulta":
 
@@ -1741,19 +1608,22 @@ else:
             if not proyectos_seleccionados:
                 st.error("Favor de seleccionar por lo menos un proyecto")
                 return None
-
             df_ppt = df_ppt.copy()
             df_real = df_real.copy()
-
-            df_ppt["Cuenta_A"] = df_ppt["Cuenta_A"].astype(str).str.strip()
-            df_real["Cuenta_A"] = df_real["Cuenta_A"].astype(str).str.strip()
-            df_ppt["Cuenta_Nombre_A"] = df_ppt["Cuenta_Nombre_A"].astype(str).str.strip()
-            df_real["Cuenta_Nombre_A"] = df_real["Cuenta_Nombre_A"].astype(str).str.strip()
-
-            cuentas_df = pd.concat([
-                df_ppt[["Cuenta_A", "Cuenta_Nombre_A"]],
-                df_real[["Cuenta_A", "Cuenta_Nombre_A"]]
-            ]).drop_duplicates().sort_values("Cuenta_Nombre_A")
+            for df in (df_ppt, df_real):
+                df["Cuenta_A"] = df["Cuenta_A"].astype(str).str.strip()
+                df["Cuenta_Nombre_A"] = df["Cuenta_Nombre_A"].apply(limpiar_texto_excel)
+                df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
+                df["CeCo_A"] = df["CeCo_A"].astype(str).str.strip()
+                df["Proyecto_A"] = df["Proyecto_A"].astype(str).str.strip()
+            cuentas_df = (
+                pd.concat([
+                    df_ppt[["Cuenta_Nombre_A"]],
+                    df_real[["Cuenta_Nombre_A"]]
+                ])
+                .drop_duplicates()
+                .sort_values("Cuenta_Nombre_A")
+            )
 
             opciones_cuenta = ["TODAS"] + cuentas_df["Cuenta_Nombre_A"].tolist()
 
@@ -1762,39 +1632,41 @@ else:
                 opciones_cuenta,
                 key="consulta_cuenta_select"
             )
-
             df_ppt_f = df_ppt[
                 (df_ppt["Mes_A"].isin(meses_seleccionado)) &
-                (df_ppt["CeCo_A"].astype(str).isin([str(x) for x in cecos_seleccionados])) &
-                (df_ppt["Proyecto_A"].astype(str).isin([str(x) for x in proyectos_seleccionados]))
+                (df_ppt["CeCo_A"].isin([str(x) for x in cecos_seleccionados])) &
+                (df_ppt["Proyecto_A"].isin([str(x) for x in proyectos_seleccionados]))
             ].copy()
 
             df_real_f = df_real[
                 (df_real["Mes_A"].isin(meses_seleccionado)) &
-                (df_real["CeCo_A"].astype(str).isin([str(x) for x in cecos_seleccionados])) &
-                (df_real["Proyecto_A"].astype(str).isin([str(x) for x in proyectos_seleccionados]))
+                (df_real["CeCo_A"].isin([str(x) for x in cecos_seleccionados])) &
+                (df_real["Proyecto_A"].isin([str(x) for x in proyectos_seleccionados]))
             ].copy()
-
             if cuenta_seleccionada != "TODAS":
                 df_ppt_f = df_ppt_f[df_ppt_f["Cuenta_Nombre_A"] == cuenta_seleccionada]
                 df_real_f = df_real_f[df_real_f["Cuenta_Nombre_A"] == cuenta_seleccionada]
-
             ppt_resumen = (
                 df_ppt_f.groupby("Cuenta_Nombre_A", as_index=False)["Neto_A"]
                 .sum()
                 .rename(columns={"Neto_A": "PPT"})
             )
+
             real_resumen = (
                 df_real_f.groupby("Cuenta_Nombre_A", as_index=False)["Neto_A"]
                 .sum()
                 .rename(columns={"Neto_A": "REAL"})
             )
 
-            tabla = ppt_resumen.merge(real_resumen, on="Cuenta_Nombre_A", how="outer").fillna(0)
+            tabla = (
+                ppt_resumen
+                .merge(real_resumen, on="Cuenta_Nombre_A", how="outer")
+                .fillna(0)
+            )
             tabla["DIF"] = tabla["REAL"] - tabla["PPT"]
             tabla["%"] = np.where(tabla["PPT"] != 0, (tabla["REAL"] / tabla["PPT"]) - 1, 0)
-
             st.subheader("Consulta por Cuenta")
+
             st.dataframe(
                 tabla.style.format({
                     "PPT": "${:,.2f}",
@@ -1804,11 +1676,11 @@ else:
                 }),
                 use_container_width=True
             )
-
             if not tabla.empty:
                 fig = go.Figure()
                 fig.add_bar(x=tabla["Cuenta_Nombre_A"], y=tabla["PPT"], name="PPT")
                 fig.add_bar(x=tabla["Cuenta_Nombre_A"], y=tabla["REAL"], name="REAL")
+
                 fig.update_layout(
                     title="PPT vs REAL por Cuenta",
                     xaxis_title="Cuenta",
@@ -1818,12 +1690,13 @@ else:
                     legend_title="Tipo",
                     xaxis_tickangle=-30
                 )
+
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Sin datos con los filtros seleccionados.")
 
-            return tabla 
-        
+            return tabla
+
         col1, col2, col3 = st.columns(3)
         meses_seleccionado = filtro_meses(col1, df_ppt)
         ceco_codigo, ceco_nombre = filtro_ceco(col2)
@@ -1831,7 +1704,6 @@ else:
 
         tabla_Consultas(df_ppt, df_real, meses_seleccionado, ceco_codigo, proyecto_codigo)
 
-        
     elif selected == "Meses PPT":
         def mostrar_meses_ppt(df_ppt):
             meses_disponibles = df_ppt["Mes_A"].unique().tolist()
@@ -2016,7 +1888,6 @@ else:
                                 "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
 
                 meses_disponibles = [mes for mes in meses_ordenados if mes in meses_filtrados]
-
                 df_meses = df_ppt[df_ppt["Proyecto_A"].isin(codigo_pro)]
                 df_meses = df_meses[~(df_meses["Clasificacion_A"].isin(["IMPUESTOS", "OTROS INGRESOS"]))]
                 if st.session_state["rol"] == "gerente":
@@ -2032,18 +1903,31 @@ else:
                     values="Neto_A",
                     aggfunc="sum"
                 )
+
                 for mes in meses_disponibles:
                     if mes not in df_pivot.columns:
                         df_pivot[mes] = 0
+                
+                # Reordenar columnas según meses_disponibles
                 df_pivot = df_pivot[meses_disponibles]
                 df_pivot = df_pivot.reset_index().fillna(0)
+
+                # --- Agregar columnas de Total y Promedio ---
                 columnas_mensuales = [col for col in df_pivot.columns if col not in ["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"]]
                 df_pivot["Total"] = df_pivot[columnas_mensuales].sum(axis=1)
                 df_pivot["Promedio"] = df_pivot[columnas_mensuales].mean(axis=1)
+
+
+                # --- Configurar AgGrid ---
+
                 gb = GridOptionsBuilder.from_dataframe(df_pivot)
+
+                # Agrupar jerárquicamente
                 gb.configure_column("Clasificacion_A", rowGroup=True, hide=True)
                 gb.configure_column("Categoria_A", rowGroup=True, hide=True)
                 gb.configure_column("Cuenta_Nombre_A", pinned='left')
+
+                # Formateador de moneda usando JavaScript
                 currency_formatter = JsCode("""
                     function(params) {
                         if (params.value === 0 || params.value === null) {
@@ -2077,34 +1961,47 @@ else:
                     domLayout='normal',
                     height=600
                 )
+
         mostrar_meses_ppt(df_ppt)
         
     elif selected == "Variaciones":
         meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
         meses_disponibles = [m for m in meses_ordenados if (m in df_ppt["Mes_A"].unique()) or (m in df_real["Mes_A"].unique())]
 
-        meses_sel = st.multiselect(
+        meses_seleccionado = st.multiselect(
             "Selecciona mes(es):",
             options=meses_disponibles,
             default=meses_disponibles[-1:] if meses_disponibles else [],
             key="cmp_meses_excel"
         )
-        if not meses_sel:
+
+        if not meses_seleccionado:
             st.error("Favor de seleccionar por lo menos un mes.")
             st.stop()
-        col1, col2, col3 = st.columns(3)
-        meses_seleccionado = filtro_meses(col1, df_ppt)
+
+        col2, col3 = st.columns(2)
         proyecto_codigo, proyecto_nombre = filtro_pro(col2)
         ceco_codigo, ceco_nombre = filtro_ceco(col3)
 
-        seccion_analisis_por_clasificacion(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, "COSS", ceco_codigo, ceco_nombre)
+        seccion_analisis_por_clasificacion(
+            df_ppt, df_real, ingreso,
+            meses_seleccionado, proyecto_codigo, proyecto_nombre,
+            "COSS", ceco_codigo, ceco_nombre
+        )
         seccion_analisis_especial_porcentual(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, ceco_codigo, ceco_nombre, patio, "Patio")
-        seccion_analisis_por_clasificacion(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, "G.ADMN", ceco_codigo, ceco_nombre)
+        seccion_analisis_por_clasificacion(
+            df_ppt, df_real, ingreso,
+            meses_seleccionado, proyecto_codigo, proyecto_nombre,
+            "G.ADMN", ceco_codigo, ceco_nombre
+        )
 
         if st.session_state["rol"] == "admin":
-            seccion_analisis_por_clasificacion(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, "GASTOS FINANCIEROS", ceco_codigo, ceco_nombre)
+            seccion_analisis_por_clasificacion(
+                df_ppt, df_real, ingreso,
+                meses_seleccionado, proyecto_codigo, proyecto_nombre,
+                "GASTOS FINANCIEROS", ceco_codigo, ceco_nombre
+            )
             seccion_analisis_especial_porcentual(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, ceco_codigo, ceco_nombre, oh, "OH")
-
 
     elif selected == "Comparativa":
 
@@ -2318,6 +2215,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
