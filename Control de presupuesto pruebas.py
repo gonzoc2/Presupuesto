@@ -372,7 +372,7 @@ def estado_resultado(df_ppt, meses_seleccionado, proyecto_nombre, proyecto_codig
     return estado_resultado
 
 
-def filtro_ceco(col, df_cecos):
+def filtro_ceco(col):
     df_cecos = cargar_datos(cecos_url)
     df_cecos["ceco"] = df_cecos["ceco"].astype(str).str.strip()
     df_cecos["nombre"] = df_cecos["nombre"].astype(str).str.strip()
@@ -2220,6 +2220,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
