@@ -2158,13 +2158,13 @@ else:
         proyecto_codigo, proyecto_nombre = filtro_pro(col2)
         ceco_codigo, ceco_nombre = filtro_ceco(col3)
 
-        seccion_analisis_por_clasificacion(df_ppt, df_real, meses_seleccionado, proyecto_codigo, proyecto_nombre, "COSS", ceco_codigo, ceco_nombre)
-        seccion_analisis_por_clasificacion(df_ppt, df_real, meses_seleccionado, proyecto_codigo, proyecto_nombre, "G.ADMN", ceco_codigo, ceco_nombre)
-        seccion_analisis_especial_porcentual(df_ppt, df_real, meses_seleccionado, proyecto_codigo, proyecto_nombre, ceco_codigo, ceco_nombre, patio, "Patio")
+        seccion_analisis_por_clasificacion(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, "COSS", ceco_codigo, ceco_nombre)
+        seccion_analisis_por_clasificacion(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, "G.ADMN", ceco_codigo, ceco_nombre)
+        seccion_analisis_especial_porcentual(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, ceco_codigo, ceco_nombre, patio, "Patio")
 
         if st.session_state["rol"] == "admin":
-            seccion_analisis_por_clasificacion(df_ppt, df_real, meses_seleccionado, proyecto_codigo, proyecto_nombre, "GASTOS FINANCIEROS", ceco_codigo, ceco_nombre)
-            seccion_analisis_especial_porcentual(df_ppt, df_real, meses_seleccionado, proyecto_codigo, proyecto_nombre, ceco_codigo, ceco_nombre, oh, "OH")
+            seccion_analisis_por_clasificacion(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, "GASTOS FINANCIEROS", ceco_codigo, ceco_nombre)
+            seccion_analisis_especial_porcentual(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, ceco_codigo, ceco_nombre, oh, "OH")
 
     elif selected == "Comparativa":
 
@@ -2376,6 +2376,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
