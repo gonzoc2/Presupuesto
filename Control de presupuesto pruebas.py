@@ -1640,14 +1640,14 @@ else:
 
         col1, col2 = st.columns(2)
         meses_seleccionado = filtro_meses(col1, df_ppt)
-        ceco_codigo, ceco_nombre, df_cecos = filtro_ceco(col2, cecos_url)
+        ceco_codigo, ceco_nombre= filtro_ceco(col2)
 
         tabla_final = tabla_departamentos(
             df_ppt=df_ppt,
             df_real=df_real,
             meses_seleccionado=meses_seleccionado,
             cecos_seleccionados=ceco_codigo,
-            df_cecos=df_cecos
+            df_cecos=ceco_nombre
         )
 
     elif selected == "Consulta":
@@ -2253,6 +2253,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
