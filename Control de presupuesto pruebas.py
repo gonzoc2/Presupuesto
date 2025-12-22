@@ -535,11 +535,8 @@ def seccion_analisis_por_clasificacion_nominal(
         if not meses_sel:
             st.error("Selecciona por lo menos un mes.")
             return
-
         proy = [str(x).strip() for x in proyecto_codigo]
         cecos = [str(x).strip() for x in ceco_codigo]
-
-        # ---------------- PPT ----------------
         df_ppt_sel = df_ppt[
             (df_ppt["Mes_A"].isin(meses_sel)) &
             (df_ppt["Proyecto_A"].astype(str).isin(proy)) &
@@ -552,8 +549,6 @@ def seccion_analisis_por_clasificacion_nominal(
         ppt_cla = df_ppt_sel.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum().rename(columns={"Neto_A": "PPT"})
         ppt_cat = df_ppt_sel.groupby(["Clasificacion_A", "Categoria_A"], as_index=False)["Neto_A"].sum().rename(columns={"Neto_A": "PPT"})
         ppt_cta = df_ppt_sel.groupby(["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"], as_index=False)["Neto_A"].sum().rename(columns={"Neto_A": "PPT"})
-
-        # ---------------- REAL ----------------
         df_real_sel = df_real[
             (df_real["Mes_A"].isin(meses_sel)) &
             (df_real["Proyecto_A"].astype(str).isin(proy)) &
@@ -566,8 +561,6 @@ def seccion_analisis_por_clasificacion_nominal(
         real_cla = df_real_sel.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum().rename(columns={"Neto_A": "REAL"})
         real_cat = df_real_sel.groupby(["Clasificacion_A", "Categoria_A"], as_index=False)["Neto_A"].sum().rename(columns={"Neto_A": "REAL"})
         real_cta = df_real_sel.groupby(["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"], as_index=False)["Neto_A"].sum().rename(columns={"Neto_A": "REAL"})
-
-        # ---------------- Resumen Clasificación (Nominal) ----------------
         df_cla = ppt_cla.merge(real_cla, on="Clasificacion_A", how="outer").fillna(0)
         df_cla["DIF"] = df_cla["REAL"] - df_cla["PPT"]
 
@@ -585,30 +578,22 @@ def seccion_analisis_por_clasificacion_nominal(
             .format({"PPT": "${:,.2f}", "REAL": "${:,.2f}", "DIF": "${:,.2f}"}),
             use_container_width=True
         )
-
-        # ---------------- Categoría + Cuenta (Nominal) ----------------
         df_cat = ppt_cat.merge(real_cat, on=["Clasificacion_A", "Categoria_A"], how="outer").fillna(0)
         df_cat["DIF"] = df_cat["REAL"] - df_cat["PPT"]
 
         df_cta = ppt_cta.merge(real_cta, on=["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"], how="outer").fillna(0)
         df_cta["DIF"] = df_cta["REAL"] - df_cta["PPT"]
-
-        # columna extra: Total_Categoría (nominal) para cada cuenta (PPT y REAL del total)
         cat_tot_ppt = dict(zip(df_cat["Categoria_A"], df_cat["PPT"]))
         cat_tot_real = dict(zip(df_cat["Categoria_A"], df_cat["REAL"]))
 
         df_cta["Total_Categoría_PPT"] = df_cta["Categoria_A"].map(cat_tot_ppt).fillna(0)
         df_cta["Total_Categoría_REAL"] = df_cta["Categoria_A"].map(cat_tot_real).fillna(0)
-
-        # Para que el grupo de categoría muestre total, armamos salida con filas "Categoría" y filas "Cuenta"
         df_cat_out = df_cat[["Categoria_A", "PPT", "REAL", "DIF"]].copy()
         df_cat_out["Cuenta_Nombre_A"] = ""  # fila categoría
 
-        df_cta_out = df_cta[["Categoria_A", "Cuenta_Nombre_A", "PPT", "REAL", "DIF", "Total_Categoría_PPT", "Total_Categoría_REAL"]].copy()
+        df_cta_out = df_cta[["Categoria_A", "Cuenta_Nombre_A", "PPT", "REAL", "DIF"]].copy()
 
         df_out = pd.concat([df_cat_out, df_cta_out], ignore_index=True)
-
-        # --------- AgGrid con Totales por Categoría ----------
         currency_formatter = JsCode("""
             function(params) {
                 if (params.value === null || params.value === undefined) return '';
@@ -620,9 +605,7 @@ def seccion_analisis_por_clasificacion_nominal(
         gb.configure_default_column(resizable=True, sortable=True, filter=True)
         gb.configure_column("Categoria_A", rowGroup=True, hide=True)
         gb.configure_column("Cuenta_Nombre_A", header_name="Cuenta", pinned="left")
-
-        # columnas nominales con sum para que el grupo muestre total
-        for col in ["PPT", "REAL", "DIF", "Total_Categoría_PPT", "Total_Categoría_REAL"]:
+        for col in ["PPT", "REAL", "DIF"]:
             if col in df_out.columns:
                 gb.configure_column(
                     col,
@@ -641,8 +624,6 @@ def seccion_analisis_por_clasificacion_nominal(
 
         meses_key = "-".join(meses_sel)
         grid_key = f"agrid_nom_{clasificacion_nombre}_{'-'.join(proy)}_{'-'.join(cecos)}_{meses_key}"
-
-        st.markdown("### Categoría + Cuenta (Nominal) — con total por Categoría")
         AgGrid(
             df_out,
             gridOptions=gridOptions,
@@ -1155,39 +1136,35 @@ else:
         col1, col2 = st.columns(2)
         meses_seleccionado = filtro_meses(col1, df_ppt)
         proyecto_codigo, proyecto_nombre = filtro_pro(col2)
-
         df_agrid = df_ppt
-
-        tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo)
-
         if st.session_state['rol'] == "director" or st.session_state['rol'] == "admin":
             ventanas = ['INGRESO', 'COSS', 'G.ADMN', 'GASTOS FINANCIEROS', 'INGRESO FINANCIERO']
             tabs = st.tabs(ventanas)
             with tabs[0]:
-                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Categoria_A", "INGRESO", "Tabla de Ingresos")
+                tabla_comparativa(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Categoria_A", "INGRESO", "Tabla de Ingresos")
 
             with tabs[1]:
-                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "COSS", "Tabla de COSS")
+                tabla_comparativa(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "COSS", "Tabla de COSS")
                     
             with tabs[2]:
-                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "G.ADMN", "Tabla de G.ADMN")
-                    
+                tabla_comparativa(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "G.ADMN", "Tabla de G.ADMN")
+
             with tabs[3]:
-                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "GASTOS FINANCIEROS", "Tabla de Gastos Financieros")
+                tabla_comparativa(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "GASTOS FINANCIEROS", "Tabla de Gastos Financieros")
                     
             with tabs[4]:
-                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Categoria_A", "INGRESO POR REVALUACION CAMBIARIA", "Tabla de Ingreso Financiero")
+                tabla_comparativa(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Categoria_A", "INGRESO POR REVALUACION CAMBIARIA", "Tabla de Ingreso Financiero")
         else:
             ventanas = ['INGRESO', 'COSS', 'G.ADMN']
             tabs = st.tabs(ventanas)
             with tabs[0]:
-                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Categoria_A", "INGRESO", "Tabla de Ingresos")
+                tabla_comparativa(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Categoria_A", "INGRESO", "Tabla de Ingresos")
 
             with tabs[1]:
-                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "COSS", "Tabla de COSS")
+                tabla_comparativa(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "COSS", "Tabla de COSS")
                     
             with tabs[2]:
-                tabla_variacion_pct(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "G.ADMN", "Tabla de G.ADMN")  
+                tabla_comparativa(df_ppt, df_real, meses_seleccionado, proyecto_nombre, proyecto_codigo, "Clasificacion_A", "G.ADMN", "Tabla de G.ADMN")
 
 
     elif selected == "Ingresos":
@@ -1278,35 +1255,65 @@ else:
                 })
             )
 
-            st.subheader("📈 Comparativa de Ingresos")
-            st.dataframe(styled, use_container_width=True)
+            tabs = st.tabs(["Ingresos Mensuales", "Ingresos YTD"])
+            with tabs[0]:
+                st.subheader("Ingresos Mensuales")
+                st.dataframe(styled, use_container_width=True)
 
-            fig = go.Figure()
+                fig = go.Figure()
 
-            fig.add_trace(go.Scatter(
-                x=tabla["Mes_A"],
-                y=tabla["PPT"],
-                mode="lines+markers",
-                name="Ingreso PPT"
-            ))
+                fig.add_trace(go.Bar(
+                    x=tabla["Mes_A"],
+                    y=tabla["PPT"],
+                    name="Ingreso PPT"
+                ))
 
-            fig.add_trace(go.Scatter(
-                x=tabla["Mes_A"],
-                y=tabla["REAL"],
-                mode="lines+markers",
-                name="Ingreso REAL"
-            ))
+                fig.add_trace(go.Bar(
+                    x=tabla["Mes_A"],
+                    y=tabla["REAL"],
+                    name="Ingreso REAL"
+                ))
 
-            fig.update_layout(
-                title="Ingreso PPT vs REAL",
-                xaxis_title="Mes",
-                yaxis_title="Ingreso",
-                hovermode="x unified",
-                legend_title="Tipo",
-                height=420
-            )
+                fig.update_layout(
+                    title="Ingreso PPT vs REAL",
+                    xaxis_title="Mes",
+                    yaxis_title="Ingreso",
+                    barmode="group",
+                    legend_title="Tipo",
+                    height=420
+                )
 
-            st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True)
+            with tabs[1]:
+                st.subheader("Ingresos YTD")
+                st.dataframe(styled, use_container_width=True)
+
+                fig = go.Figure()
+
+                fig.add_trace(go.Bar(
+                    x=tabla["Mes_A"],
+                    y=tabla["PPT"],
+                    name="Ingreso PPT"
+                ))
+
+                fig.add_trace(go.Bar(
+                    x=tabla["Mes_A"],
+                    y=tabla["REAL"],
+                    name="Ingreso REAL"
+                ))
+
+                fig.update_layout(
+                    title="Ingreso PPT vs REAL",
+                    xaxis_title="Mes",
+                    yaxis_title="Ingreso",
+                    barmode="group",
+                    hovermode="x unified",
+                    legend_title="Tipo",
+                    height=420
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+
 
         col1, col2 = st.columns(2)
         meses_seleccionado = filtro_meses(col1, df_ppt)
@@ -1415,16 +1422,10 @@ else:
 
             return tabla_final
         def agrid_oh_con_totales(df, filtro_col, filtro_val):
-            """
-            AgGrid con totales por Categoría y por Cuenta (columna extra),
-            aplicable a COSS / G.ADMN / GASTOS FINANCIEROS / INGRESO FINANCIERO (según filtro).
-            - filtro_col: "Clasificacion_A" o "Categoria_A"
-            - filtro_val: e.g. "COSS" o "G.ADMN" o "GASTOS FINANCIEROS" o "INGRESO POR REVALUACION CAMBIARIA" (etc.)
-            """
             df = df.copy()
             df = df[df[filtro_col] == filtro_val]
             df_g = (
-                df.groupby(["Categoria_A", "Cuenta_A", "Cuenta_Nombre_A"], as_index=False)
+                df.groupby(["Clasificacion_A", "Categoria_A", "Cuenta_A", "Cuenta_Nombre_A"], as_index=False)
                 .agg({"Neto_A": "sum"})
             )
             tot_cuenta = (
@@ -1443,11 +1444,20 @@ else:
 
             gb = GridOptionsBuilder.from_dataframe(df_g)
             gb.configure_default_column(resizable=True, sortable=True, filter=True)
+            gb.configure_column("Clasificacion_A", rowGroup=True, hide=True)
             gb.configure_column("Categoria_A", rowGroup=True, hide=True)
             gb.configure_column("Cuenta_A", header_name="Cuenta", pinned="left")
             gb.configure_column("Cuenta_Nombre_A", header_name="Cuenta Nombre", pinned="left")
-            gb.configure_column("Neto_A", header_name="sum(Neto_A)", type=["numericColumn"], aggFunc="sum", valueFormatter=currency_formatter)
-            gb.configure_column("Total Cuenta", header_name="sum(Total Cuenta)", type=["numericColumn"], aggFunc="sum", valueFormatter=currency_formatter)
+
+            for col in df_g.columns:
+                if col not in ["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"]:
+                    gb.configure_column(
+                        col,
+                        type=["numericColumn", "numberColumnFilter", "customNumericFormat"],
+                        aggFunc="sum",
+                        valueFormatter=currency_formatter,
+                        cellStyle={'textAlign': 'right'}
+                    )
 
             grid_options = gb.build()
             grid_options.update({
@@ -1604,13 +1614,13 @@ else:
 
             def color_fila(row):
                 if row["ceco"] == "TOTAL":
-                    return ["background-color:#1f4e79;color:white;font-weight:bold"] * len(row)
+                    return ["background-color:#f7f6f1;color:white;font-weight:bold"] * len(row)
 
                 v = float(row["%"]) if pd.notnull(row["%"]) else 0.0
-                if v >= 0:
+                if v <= 0:
                     bg = "#92D050"
                 elif v >= -0.05:
-                    bg = "#FFD966"
+                    bg = "#F7F6F1"
                 else:
                     bg = "#FF0000"
                 return [f"background-color:{bg};color:black"] * len(row)
@@ -1618,7 +1628,7 @@ else:
             st.markdown("""
                 <style>
                 div[data-testid="stDataFrame"] thead tr th {
-                    background-color: #1f4e79 !important;
+                    background-color: #f7f6f1 !important;
                     color: white !important;
                     font-weight: 800 !important;
                 }
@@ -1658,6 +1668,20 @@ else:
             cecos_seleccionados=ceco_codigo,
             df_cecos=df_cecos
         )
+        st.subheader("Gráfico Departamentos")
+        st.dataframe(tabla_final, use_container_width=True)
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=tabla_final["Mes_A"], y=tabla_final["PPT"], name="PPT"))
+        fig.add_trace(go.Bar(x=tabla_final["Mes_A"], y=tabla_final["REAL"], name="REAL"))
+        fig.update_layout(
+            title="Departamentos OH",
+            xaxis_title="Mes",
+            yaxis_title="Monto",
+            barmode="group",
+            height=420,
+            legend_title="Tipo",
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     elif selected == "Consulta":
         def limpiar_texto_excel(s):
@@ -2262,6 +2286,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
