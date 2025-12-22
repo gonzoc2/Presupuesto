@@ -387,7 +387,7 @@ def filtro_ceco(col):
         else:
             ceco_codigo = df_cecos.loc[df_cecos["nombre"] == ceco_nombre, "ceco"].dropna().unique().tolist()
 
-        return ceco_codigo, ceco_nombre, df_cecos
+        return ceco_codigo, ceco_nombre
     df_visibles = df_cecos[df_cecos["ceco"].isin(allowed)].copy()
     if df_visibles.empty:
         col.error("No tienes CeCos asignados o no coinciden con el catálogo.")
@@ -396,7 +396,7 @@ def filtro_ceco(col):
     opciones = list(nombre_a_codigo.keys())
     ceco_nombre = col.selectbox("Selecciona un ceco", opciones)
     ceco_codigo = [nombre_a_codigo.get(ceco_nombre)] if ceco_nombre in nombre_a_codigo else []
-    return ceco_codigo, ceco_nombre, df_cecos
+    return ceco_codigo, ceco_nombre
 
 
 def tabla_comparativa(tipo_com, df_agrid, df_ppt, proyecto_codigo, meses_seleccionado, clasificacion, categoria, titulo):
@@ -2253,6 +2253,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
