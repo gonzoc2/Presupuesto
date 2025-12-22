@@ -1567,18 +1567,22 @@ else:
             tabla["DIF"] = tabla["REAL"] - tabla["PPT"]
             tabla["%"] = np.where(tabla["PPT"] != 0, (tabla["REAL"] / tabla["PPT"]) - 1, 0.0)
 
-            # Map CeCo -> Nombre
+            # ---- Map CeCo -> Nombre (df_cecos debe ser DataFrame) ----
             df_cecos_map = df_cecos.copy()
             df_cecos_map["ceco"] = df_cecos_map["ceco"].astype(str).str.strip()
             df_cecos_map["nombre"] = df_cecos_map["nombre"].astype(str).str.strip()
 
-            cecos_map = df_cecos_map[df_cecos_map["ceco"].isin(cecos_sel)][["ceco", "nombre"]].drop_duplicates()
+            cecos_map = (
+                df_cecos_map[df_cecos_map["ceco"].isin(cecos_sel)][["ceco", "nombre"]]
+                .drop_duplicates()
+            )
 
             tabla = tabla.merge(
                 cecos_map.rename(columns={"ceco": "CeCo_A", "nombre": "ceco"}),
                 on="CeCo_A",
                 how="left"
             )
+
             tabla["ceco"] = tabla["ceco"].fillna(tabla["CeCo_A"])
             tabla = tabla[["ceco", "REAL", "PPT", "DIF", "%"]]
 
@@ -1604,14 +1608,13 @@ else:
 
                 v = float(row["%"]) if pd.notnull(row["%"]) else 0.0
                 if v >= 0:
-                    bg = "#92D050"   # verde
+                    bg = "#92D050"
                 elif v >= -0.05:
-                    bg = "#FFD966"   # amarillo
+                    bg = "#FFD966"
                 else:
-                    bg = "#FF0000"   # rojo
+                    bg = "#FF0000"
                 return [f"background-color:{bg};color:black"] * len(row)
 
-            # Encabezado azul
             st.markdown("""
                 <style>
                 div[data-testid="stDataFrame"] thead tr th {
@@ -1638,16 +1641,22 @@ else:
 
             return tabla_final
 
+        # --------- UI ----------
         col1, col2 = st.columns(2)
         meses_seleccionado = filtro_meses(col1, df_ppt)
-        ceco_codigo, ceco_nombre= filtro_ceco(col2)
+        ceco_codigo, ceco_nombre = filtro_ceco(col2)
+
+        # ✅ Cargar catálogo CeCos SIN tocar filtro_ceco
+        df_cecos = cargar_datos(cecos_url)
+        df_cecos["ceco"] = df_cecos["ceco"].astype(str).str.strip()
+        df_cecos["nombre"] = df_cecos["nombre"].astype(str).str.strip()
 
         tabla_final = tabla_departamentos(
             df_ppt=df_ppt,
             df_real=df_real,
             meses_seleccionado=meses_seleccionado,
             cecos_seleccionados=ceco_codigo,
-            df_cecos=ceco_nombre
+            df_cecos=df_cecos
         )
 
     elif selected == "Consulta":
@@ -2253,6 +2262,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
