@@ -1680,13 +1680,18 @@ else:
 
             def color_fila(row):
                 if row["ceco"] == "TOTAL":
-                    return ["background-color:#f7f6f1;color:black;font-weight:bold"] * len(row)
+                    return ["background-color:#FFFFFF;color:black;font-weight:bold"] * len(row)
 
                 v = float(row["%"]) if pd.notnull(row["%"]) else 0.0
+
+                # ✅ color por defecto (cuando 0 < v < 0.10)
+                bg = "#FFFFFF"  # amarillo (puedes cambiarlo si quieres)
+
                 if v <= 0:
-                    bg = "#92D050"
+                    bg = "#92D050"   # verde
                 elif v >= 0.10:
-                    bg = "#FF0000"
+                    bg = "#FF0000"   # rojo
+
                 return [f"background-color:{bg};color:black"] * len(row)
 
             st.markdown("""
@@ -2376,6 +2381,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
