@@ -1268,8 +1268,6 @@ else:
                 })
 
             df_out = pd.DataFrame(filas)
-
-            st.subheader(f"PPT vs REAL — {proyecto_nombre}")
             _tabla_resumen_style(df_out)
 
             return df_out
@@ -2579,6 +2577,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
