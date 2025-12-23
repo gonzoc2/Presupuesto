@@ -2580,13 +2580,13 @@ else:
         
     elif selected == "Modificaciones":
         st.write("Cambios base de datos")
-        def df_tabla_modificaciones(df_ppt_actual):
+        def df_tabla_modificaciones(df_ppt):
             if "df_ppt_base" not in st.session_state:
                 st.warning("No existe una versión base para comparar.")
                 return
 
             df_base = st.session_state["df_ppt_base"].copy()
-            df_act  = df_ppt_actual.copy()
+            df_act  = df_ppt.copy()
 
             # Clave única lógica (ajusta si necesitas)
             key_cols = [
@@ -2688,6 +2688,7 @@ else:
                 height=520,
                 theme="streamlit"
             )
+
 
 
 
