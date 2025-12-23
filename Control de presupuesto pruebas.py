@@ -2598,12 +2598,12 @@ else:
             # columnas que quieres visualizar en cambios
             cols_show = [
                 "Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A",
-                "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A", "Usuario_A",
+                "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A",
                 "Neto_A_BASE", "Neto_A_PPT", "DIF_NETO"
             ]
 
             # columnas a comparar (además de Neto_A)
-            compare_cols = ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A", "Usuario_A"]
+            compare_cols = ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A"]
 
             # ---------------- Normalización ----------------
             base = df_base.copy()
@@ -2890,6 +2890,7 @@ else:
             st.plotly_chart(fig4, use_container_width=True)
         with c4:
             st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
