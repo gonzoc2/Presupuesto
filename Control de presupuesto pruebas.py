@@ -841,13 +841,14 @@ else:
     if st.session_state["rol"] in ["admin"] and "ESGARI" in st.session_state["proyectos"]:
         selected = option_menu(
             menu_title=None,
-            options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos"],
+            options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos"],
             icons=[
             "calendar-range",     # PPT YTD
             "bar-chart-steps",    # PPT VS ACTUAL
             "cash-coin",          # Ingresos
             "building",           # OH (Overhead / oficinas)
             "diagram-3",          # Departamentos
+            "diagram-3",   
             "search",             # Consulta
             "calendar-month",     # Meses PPT
             "arrow-left-right",   # Variaciones
@@ -2542,6 +2543,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
