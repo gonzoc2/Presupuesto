@@ -625,8 +625,6 @@ def seccion_analisis_por_clasificacion(
             elif row["REAL NOM"] < row["PPT NOM"]:
                 return ["background-color: green; color: black;"] * len(row)
             return [""] * len(row)
-
-        st.markdown("### Resumen Clasificación (Nominal + %)")
         st.dataframe(
             df_cla.set_index("Clasificacion_A").style
                 .apply(resaltar, axis=1)
@@ -715,8 +713,6 @@ def seccion_analisis_por_clasificacion(
 
         meses_key = "-".join(meses_sel)
         grid_key = f"agrid_mix_{clasificacion_nombre}_{'-'.join(proy)}_{'-'.join(cecos)}_{meses_key}"
-
-        st.markdown("### Categoría (Cat / Clasificación) + Cuenta (Cta / Categoría) — Nominal + %")
         AgGrid(
             df_out,
             gridOptions=gridOptions,
@@ -2543,6 +2539,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
