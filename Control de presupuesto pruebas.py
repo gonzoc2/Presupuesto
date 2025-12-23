@@ -2580,114 +2580,27 @@ else:
         
     elif selected == "Modificaciones":
         st.write("Cambios base de datos")
-        def df_tabla_modificaciones(df_ppt):
-            if "df_ppt_base" not in st.session_state:
-                st.warning("No existe una versión base para comparar.")
-                return
+        def df_tabla_modificaciones(df_ppt, df_base):
+            df_ppt_mod = df_ppt[df_ppt["Modificado_A"] == "SI"].copy()
+            df_merged = df_ppt_mod.merge(
+                df_base,
+                on=["Cuenta_A", "CeCo_A", "Proyecto_A", "Mes_A"],
+                suffixes=("_PPT", "_BASE"),
+                how="left"
+            )
 
-            df_base = st.session_state["df_ppt_base"].copy()
-            df_act  = df_ppt.copy()
+            df_merged["Diferencia_Neto"] = df_merged["Neto_A_BASE"] - df_merged["Neto_A_PPT"]
 
-            # Clave única lógica (ajusta si necesitas)
-            key_cols = [
-                "Mes_A",
-                "Proyecto_A",
-                "CeCo_A",
-                "Cuenta_A"
+            columnas_mostrar = [
+                "Cuenta_A", "Cuenta_Nombre_A_PPT", "CeCo_A", "Proyecto_A", "Mes_A",
+                "Neto_A_PPT", "Neto_A_BASE", "Diferencia_Neto"
             ]
+            df_final = df_merged[columnas_mostrar].copy()
+            df_final = df_final.rename(columns={
+                "Cuenta_Nombre_A_PPT": "Cuenta_Nombre_A"
+            })
+            return df_final
 
-            # Normalización
-            for df in (df_base, df_act):
-                for c in key_cols:
-                    df[c] = df[c].astype(str).str.strip()
-                df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0)
-
-            # Merge para detectar cambios
-            df_cmp = df_base.merge(
-                df_act,
-                on=key_cols,
-                how="outer",
-                suffixes=("_BASE", "_ACTUAL"),
-                indicator=True
-            )
-
-            # Clasificación del cambio
-            def tipo_cambio(row):
-                if row["_merge"] == "left_only":
-                    return "ELIMINADO"
-                elif row["_merge"] == "right_only":
-                    return "NUEVO"
-                elif row["Neto_A_BASE"] != row["Neto_A_ACTUAL"]:
-                    return "MODIFICADO"
-                return "SIN CAMBIO"
-
-            df_cmp["TIPO_CAMBIO"] = df_cmp.apply(tipo_cambio, axis=1)
-
-            # Filtrar solo cambios
-            df_cambios = df_cmp[df_cmp["TIPO_CAMBIO"] != "SIN CAMBIO"].copy()
-
-            if df_cambios.empty:
-                st.success("No hay modificaciones en la base PPT.")
-                return
-
-            # Diferencia
-            df_cambios["DIF_NETO"] = (
-                df_cambios["Neto_A_ACTUAL"].fillna(0)
-                - df_cambios["Neto_A_BASE"].fillna(0)
-            )
-
-            # Orden visual
-            cols_out = (
-                key_cols +
-                ["TIPO_CAMBIO", "Neto_A_BASE", "Neto_A_ACTUAL", "DIF_NETO"]
-            )
-
-            df_out = df_cambios[cols_out].copy()
-
-            # --------- AgGrid ----------
-            from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
-
-            currency_fmt = JsCode("""
-                function(params){
-                    if (params.value === null || params.value === undefined) return '';
-                    return '$' + params.value.toLocaleString(undefined, {minimumFractionDigits: 2});
-                }
-            """)
-
-            gb = GridOptionsBuilder.from_dataframe(df_out)
-            gb.configure_default_column(resizable=True, sortable=True, filter=True)
-
-            for col in ["Neto_A_BASE", "Neto_A_ACTUAL", "DIF_NETO"]:
-                gb.configure_column(
-                    col,
-                    type=["numericColumn"],
-                    valueFormatter=currency_fmt,
-                    cellStyle={"textAlign": "right"}
-                )
-
-            gb.configure_column(
-                "TIPO_CAMBIO",
-                cellStyle=JsCode("""
-                    function(params){
-                        if (params.value === 'MODIFICADO') return {backgroundColor:'#FFF3CD'};
-                        if (params.value === 'NUEVO') return {backgroundColor:'#D1E7DD'};
-                        if (params.value === 'ELIMINADO') return {backgroundColor:'#F8D7DA'};
-                    }
-                """)
-            )
-
-            gridOptions = gb.build()
-
-            st.subheader("🧾 Modificaciones en Base PPT")
-            AgGrid(
-                df_out,
-                gridOptions=gridOptions,
-                enable_enterprise_modules=True,
-                allow_unsafe_jscode=True,
-                fit_columns_on_grid_load=True,
-                height=520,
-                theme="streamlit"
-            )
 
 
 
