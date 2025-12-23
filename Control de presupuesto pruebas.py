@@ -2687,9 +2687,6 @@ else:
             cambios["Categoria_A"] = cambios["Categoria_A_PPT"].replace("nan", "").fillna("")
             cambios.loc[cambios["Categoria_A"].eq(""), "Categoria_A"] = cambios["Categoria_A_BASE"]
 
-            cambios["Usuario_A"] = cambios["Usuario_A_PPT"].replace("nan", "").fillna("")
-            cambios.loc[cambios["Usuario_A"].eq(""), "Usuario_A"] = cambios["Usuario_A_BASE"]
-
             # ---------------- Orden y salida ----------------
             # Poner primero el tipo de cambio
             out = cambios.copy()
@@ -2893,6 +2890,7 @@ else:
             st.plotly_chart(fig4, use_container_width=True)
         with c4:
             st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
