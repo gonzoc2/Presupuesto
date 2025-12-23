@@ -898,7 +898,7 @@ else:
             "cash-coin",          # Ingresos
             "building",           # OH (Overhead / oficinas)
             "diagram-3",          # Departamentos
-            "diagram-3",   
+            "kanban",   
             "search",             # Consulta
             "calendar-month",     # Meses PPT
             "arrow-left-right",   # Variaciones
@@ -912,7 +912,7 @@ else:
         selected = option_menu(
         menu_title=None,
         options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos"],
-        icons=["Calendar-range", "bar-chart-steps", "cash-coin", "building", "diagram-3", "diagram-3", "search", "calendar-month", "arrow-left-right", "bar-chart", "bullseye"],
+        icons=["Calendar-range", "bar-chart-steps", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "bar-chart", "bullseye"],
         default_index=0,
         orientation="horizontal",)
 
@@ -2579,6 +2579,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
