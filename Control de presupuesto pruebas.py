@@ -891,7 +891,7 @@ else:
     if st.session_state["rol"] in ["admin"] and "ESGARI" in st.session_state["proyectos"]:
         selected = option_menu(
             menu_title=None,
-            options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos"],
+            options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos", "Modificaciones"],
             icons=[
             "calendar-range",     # PPT YTD
             "bar-chart-steps",    # PPT VS ACTUAL
@@ -2688,6 +2688,7 @@ else:
                 height=520,
                 theme="streamlit"
             )
+
 
 
 
