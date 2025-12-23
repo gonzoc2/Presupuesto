@@ -891,7 +891,7 @@ else:
     if st.session_state["rol"] in ["admin"] and "ESGARI" in st.session_state["proyectos"]:
         selected = option_menu(
             menu_title=None,
-            options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos", "Modificaciones"],
+            options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos", "Modificaciones", "Dashboard"],
             icons=[
             "calendar-range",     # PPT YTD
             "bar-chart-steps",    # PPT VS ACTUAL
@@ -911,7 +911,7 @@ else:
     elif st.session_state["rol"] == "director" or st.session_state["rol"] == "admin":
         selected = option_menu(
         menu_title=None,
-        options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos", "Modificaciones"],
+        options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos", "Modificaciones", "Dashboard"],
         icons=["Calendar-range", "bar-chart-steps", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "bar-chart", "bullseye"],
         default_index=0,
         orientation="horizontal",)
@@ -2580,26 +2580,265 @@ else:
         
     elif selected == "Modificaciones":
         st.write("Cambios base de datos")
-        def df_tabla_modificaciones(df_ppt, df_base):
-            df_ppt_mod = df_ppt[df_ppt["Modificado_A"] == "SI"].copy()
-            df_merged = df_ppt_mod.merge(
-                df_base,
-                on=["Cuenta_A", "CeCo_A", "Proyecto_A", "Mes_A"],
-                suffixes=("_PPT", "_BASE"),
-                how="left"
+        if "df_ppt_base" not in st.session_state:
+            st.session_state["df_ppt_base"] = df_ppt.copy(deep=True)
+        def df_tabla_modificaciones(df_ppt_actual):
+
+            if "df_ppt_base" not in st.session_state:
+                st.warning("No existe una versión base para comparar.")
+                return
+
+            df_base = st.session_state["df_ppt_base"].copy()
+            df_act  = df_ppt_actual.copy()
+
+            # 🔑 Clave lógica de la línea (ajusta si agregas más columnas)
+            key_cols = ["Mes_A", "Proyecto_A", "CeCo_A", "Cuenta_A"]
+
+            # ---------- Normalización ----------
+            for df in (df_base, df_act):
+                for c in key_cols:
+                    df[c] = df[c].astype(str).str.strip()
+                df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0)
+
+            # ---------- Merge FULL ----------
+            df_cmp = df_base.merge(
+                df_act,
+                on=key_cols,
+                how="outer",
+                suffixes=("_BASE", "_ACTUAL"),
+                indicator=True
             )
 
-            df_merged["Diferencia_Neto"] = df_merged["Neto_A_BASE"] - df_merged["Neto_A_PPT"]
+            # ---------- Tipo de cambio ----------
+            def tipo_cambio(row):
+                if row["_merge"] == "left_only":
+                    return "ELIMINADO"
+                elif row["_merge"] == "right_only":
+                    return "NUEVO"
+                elif row["Neto_A_BASE"] != row["Neto_A_ACTUAL"]:
+                    return "MODIFICADO"
+                return "SIN CAMBIO"
 
-            columnas_mostrar = [
-                "Cuenta_A", "Cuenta_Nombre_A_PPT", "CeCo_A", "Proyecto_A", "Mes_A",
-                "Neto_A_PPT", "Neto_A_BASE", "Diferencia_Neto"
-            ]
-            df_final = df_merged[columnas_mostrar].copy()
-            df_final = df_final.rename(columns={
-                "Cuenta_Nombre_A_PPT": "Cuenta_Nombre_A"
-            })
-            return df_final
+            df_cmp["TIPO_CAMBIO"] = df_cmp.apply(tipo_cambio, axis=1)
+
+            # 🔥 Solo cambios reales
+            df_cambios = df_cmp[df_cmp["TIPO_CAMBIO"] != "SIN CAMBIO"].copy()
+
+            if df_cambios.empty:
+                st.success("No hay modificaciones en la base PPT.")
+                return
+
+            # ---------- Diferencia ----------
+            df_cambios["DIF_NETO"] = (
+                df_cambios["Neto_A_ACTUAL"].fillna(0)
+                - df_cambios["Neto_A_BASE"].fillna(0)
+            )
+
+            # ---------- Orden visual ----------
+            cols_out = (
+                key_cols +
+                ["TIPO_CAMBIO", "Neto_A_BASE", "Neto_A_ACTUAL", "DIF_NETO"]
+            )
+            df_out = df_cambios[cols_out].copy()
+
+            # ---------- AgGrid ----------
+            currency_fmt = JsCode("""
+                function(params){
+                    if (params.value === null || params.value === undefined) return '';
+                    return '$' + params.value.toLocaleString(undefined, {minimumFractionDigits: 2});
+                }
+            """)
+
+            gb = GridOptionsBuilder.from_dataframe(df_out)
+            gb.configure_default_column(resizable=True, sortable=True, filter=True)
+
+            for col in ["Neto_A_BASE", "Neto_A_ACTUAL", "DIF_NETO"]:
+                gb.configure_column(
+                    col,
+                    type=["numericColumn"],
+                    valueFormatter=currency_fmt,
+                    cellStyle={"textAlign": "right"}
+                )
+
+            gb.configure_column(
+                "TIPO_CAMBIO",
+                cellStyle=JsCode("""
+                    function(params){
+                        if (params.value === 'MODIFICADO') return {backgroundColor:'#FFF3CD'};
+                        if (params.value === 'NUEVO') return {backgroundColor:'#D1E7DD'};
+                        if (params.value === 'ELIMINADO') return {backgroundColor:'#F8D7DA'};
+                    }
+                """)
+            )
+
+            st.subheader("🧾 Modificaciones en Base PPT")
+            AgGrid(
+                df_out,
+                gridOptions=gb.build(),
+                enable_enterprise_modules=True,
+                allow_unsafe_jscode=True,
+                fit_columns_on_grid_load=True,
+                height=520,
+                theme="streamlit"
+            )
+
+            
+    elif selected == "DASHBOARD":
+        meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
+        meses_disponibles = [
+            m for m in meses_ordenados
+            if (m in df_ppt["Mes_A"].astype(str).unique()) or (m in df_real["Mes_A"].astype(str).unique())
+        ]
+
+        meses_sel = st.multiselect(
+            "Selecciona mes(es):",
+            options=meses_disponibles,
+            default=meses_disponibles[-1:] if meses_disponibles else [],
+            key="dashboard_meses_excel"
+        )
+        if not meses_sel:
+            st.error("Favor de seleccionar por lo menos un mes.")
+            st.stop()
+
+        proyectos_local = proyectos.copy()
+        proyectos_local["proyectos"] = proyectos_local["proyectos"].astype(str).str.strip()
+        proyectos_local["nombre"] = proyectos_local["nombre"].astype(str).str.strip()
+        df_visibles = proyectos_local.dropna(subset=["proyectos", "nombre"]).copy()
+        def _ordenar_meses(df, col_mes="Mes_A"):
+            orden = {m: i for i, m in enumerate(meses_ordenados)}
+            df["__ord"] = df[col_mes].map(orden).fillna(999).astype(int)
+            df = df.sort_values("__ord").drop(columns="__ord")
+            return df
+
+        def _ingresos_total_por_mes(df, meses):
+            base = df.copy()
+            base["Mes_A"] = base["Mes_A"].astype(str).str.strip()
+            base["Categoria_A"] = base["Categoria_A"].astype(str).str.strip()
+            base["Neto_A"] = pd.to_numeric(base["Neto_A"], errors="coerce").fillna(0)
+
+            out = (
+                base[(base["Mes_A"].isin(meses)) & (base["Categoria_A"] == "INGRESO")]
+                .groupby("Mes_A", as_index=False)["Neto_A"].sum()
+                .rename(columns={"Neto_A": "ING"})
+            )
+            out = _ordenar_meses(out, "Mes_A")
+            return out
+
+        def _COSS_total(df, meses):
+            base = df.copy()
+            base["Mes_A"] = base["Mes_A"].astype(str).str.strip()
+            base["Clasificacion_A"] = base["Clasificacion_A"].astype(str).str.strip()
+            base["Neto_A"] = pd.to_numeric(base["Neto_A"], errors="coerce").fillna(0)
+
+            out = (
+                base[(base["Mes_A"].isin(meses)) & (base["Clasificacion_A"] == "COSS")]
+                .groupby("Mes_A", as_index=False)["Neto_A"].sum()
+                .rename(columns={"Neto_A": "COSS"})
+            )
+            out = _ordenar_meses(out, "Mes_A")
+            return out
+
+        def _GADMN_total(df, meses):
+            base = df.copy()
+            base["Mes_A"] = base["Mes_A"].astype(str).str.strip()
+            base["Clasificacion_A"] = base["Clasificacion_A"].astype(str).str.strip()
+            base["Neto_A"] = pd.to_numeric(base["Neto_A"], errors="coerce").fillna(0)
+
+            out = (
+                base[(base["Mes_A"].isin(meses)) & (base["Clasificacion_A"] == "G.ADMN")]
+                .groupby("Mes_A", as_index=False)["Neto_A"].sum()
+                .rename(columns={"Neto_A": "G.ADMN"})
+            )
+            out = _ordenar_meses(out, "Mes_A")
+            return out
+
+        def _linea_ppt_real(df_ppt_mes, df_real_mes, titulo):
+            line = df_ppt_mes.merge(df_real_mes, on="Mes_A", how="outer").fillna(0)
+            line = _ordenar_meses(line, "Mes_A")
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=line["Mes_A"], y=line["PPT"], mode="lines+markers", name="PPT"))
+            fig.add_trace(go.Scatter(x=line["Mes_A"], y=line["REAL"], mode="lines+markers", name="REAL"))
+            fig.update_layout(
+                title=titulo,
+                xaxis_title="Mes",
+                yaxis_title="MXN",
+                height=380,
+                hovermode="x unified"
+            )
+            return fig
+
+        ing_ppt_mes = _ingresos_total_por_mes(df_ppt, meses_sel).rename(columns={"ING": "PPT"})
+        ing_real_mes = _ingresos_total_por_mes(df_real, meses_sel).rename(columns={"ING": "REAL"})
+        fig1 = _linea_ppt_real(ing_ppt_mes, ing_real_mes, "Ingresos")
+
+        coss_ppt_mes = _COSS_total(df_ppt, meses_sel).rename(columns={"COSS": "PPT"})
+        coss_real_mes = _COSS_total(df_real, meses_sel).rename(columns={"COSS": "REAL"})
+        fig3 = _linea_ppt_real(coss_ppt_mes, coss_real_mes, "COSS")
+
+        gadmn_ppt_mes = _GADMN_total(df_ppt, meses_sel).rename(columns={"G.ADMN": "PPT"})
+        gadmn_real_mes = _GADMN_total(df_real, meses_sel).rename(columns={"G.ADMN": "REAL"})
+        fig4 = _linea_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN")
+
+        # ---------------- GRAF 2: % UTILIDAD OPERATIVA (BARRAS) ----------------
+        nombres = df_visibles["nombre"].tolist()
+        codigos = df_visibles["proyectos"].tolist()
+
+        ppt_pct = {}
+        real_pct = {}
+
+        for nombre, codigo in zip(nombres, codigos):
+            codigo_list = [str(codigo)]
+            er_ppt = estado_resultado(df_ppt, meses_sel, nombre, codigo_list, list_pro)
+            er_real = estado_resultado(df_real, meses_sel, nombre, codigo_list, list_pro)
+            ppt_pct[nombre] = float(er_ppt.get("por_utilidad_operativa", 0) or 0.0)
+            real_pct[nombre] = float(er_real.get("por_utilidad_operativa", 0) or 0.0)
+
+        df_uo = pd.DataFrame({
+            "Proyecto": nombres,
+            "PPT": [ppt_pct[n] for n in nombres],
+            "REAL": [real_pct[n] for n in nombres],
+        }).sort_values("REAL", ascending=False)
+
+        fig2 = go.Figure()
+        fig2.add_bar(
+            x=df_uo["Proyecto"],
+            y=df_uo["PPT"],
+            name="PPT",
+            text=[f"{v*100:.1f}%" for v in df_uo["PPT"]],
+            textposition="outside"
+        )
+        fig2.add_bar(
+            x=df_uo["Proyecto"],
+            y=df_uo["REAL"],
+            name="REAL",
+            text=[f"{v*100:.1f}%" for v in df_uo["REAL"]],
+            textposition="outside"
+        )
+        fig2.update_layout(
+            title="% Utilidad Operativa",
+            xaxis_title="Proyecto",
+            yaxis_title="%",
+            barmode="group",
+            height=520,
+            hovermode="x unified",
+            xaxis_tickangle=-25,
+            yaxis_tickformat=".0%"
+        )
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.plotly_chart(fig1, use_container_width=True)
+        with c2:
+            st.plotly_chart(fig3, use_container_width=True)
+
+        c3, c4 = st.columns(2)
+        with c3:
+            st.plotly_chart(fig4, use_container_width=True)
+        with c4:
+            st.plotly_chart(fig2, use_container_width=True)
+
+
 
 
 
