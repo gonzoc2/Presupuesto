@@ -1606,7 +1606,6 @@ else:
 
             with tabs[0]:
                 tabla_comparativa(
-                    "PPT",
                     df_agrid_oh,
                     df_actual_oh,
                     proyectos_oh,
@@ -1618,7 +1617,6 @@ else:
 
             with tabs[1]:
                 tabla_comparativa(
-                    "PPT",
                     df_agrid_oh,
                     df_actual_oh,
                     proyectos_oh,
@@ -2581,6 +2579,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
