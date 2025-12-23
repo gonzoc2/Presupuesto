@@ -1854,8 +1854,8 @@ else:
                 .merge(real_coss, on="Proyecto_A", how="outer")
                 .fillna(0)
             )
-            tabla["DIF G.ADM"] = tabla["PPT_GADM"] - tabla["REAL_GADM"]
-            tabla["DIF COSS"]  = tabla["PPT_COSS"] - tabla["REAL_COSS"]
+            tabla["DIF G.ADM"] = tabla["REAL_GADM"] - tabla["PPT_GADM"]
+            tabla["DIF COSS"]  = tabla["REAL_COSS"] - tabla["PPT_COSS"]
 
             tabla["G.ADM / INGRESOS"] = np.where(
                 tabla["ING_REAL"] != 0,
@@ -2543,6 +2543,7 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
+
 
 
 
