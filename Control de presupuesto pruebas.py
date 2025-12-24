@@ -2608,10 +2608,10 @@ else:
             key_cols = ["Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A"]
             cols_show = [
                 "Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A",
-                "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A", "Usuario_A",
+                "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A",
                 "Neto_A_BASE", "Neto_A_PPT", "DIF_NETO"
             ]
-            compare_cols = ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A", "Usuario_A"]
+            compare_cols = ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A"]
 
             base = df_base.copy()
             ppt  = df_ppt.copy()
@@ -2676,7 +2676,7 @@ else:
                     cambios[ppt_col] = ""
 
             # columna final preferida PPT
-            for c in ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A", "Usuario_A"]:
+            for c in ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A"]:
                 cambios[c] = cambios.get(f"{c}_PPT", "").astype(str).replace("nan", "").fillna("")
                 mask = cambios[c].eq("")
                 cambios.loc[mask, c] = cambios.get(f"{c}_BASE", "").astype(str).replace("nan", "").fillna("")
@@ -2730,6 +2730,25 @@ else:
         if not meses_sel:
             st.error("Favor de seleccionar por lo menos un mes.")
             st.stop()
+            with st.expander("🛠 Diagnóstico DASHBOARD", expanded=True):
+                try:
+                    st.write("df_ppt shape:", getattr(df_ppt, "shape", None))
+                    st.write("df_real shape:", getattr(df_real, "shape", None))
+            
+                    st.write("Columnas PPT:", list(getattr(df_ppt, "columns", [])))
+                    st.write("Columnas REAL:", list(getattr(df_real, "columns", [])))
+            
+                    if "Mes_A" in df_ppt.columns:
+                        st.write("Meses PPT:", sorted(df_ppt["Mes_A"].astype(str).str.strip().unique().tolist()))
+                    if "Mes_A" in df_real.columns:
+                        st.write("Meses REAL:", sorted(df_real["Mes_A"].astype(str).str.strip().unique().tolist()))
+            
+                    st.write("meses_disponibles:", meses_disponibles)
+                    st.write("meses_sel:", meses_sel)
+                except Exception as e:
+                    st.exception(e)
+                    st.stop()
+
 
         proyectos_local = proyectos.copy()
         proyectos_local["proyectos"] = proyectos_local["proyectos"].astype(str).str.strip()
@@ -2870,6 +2889,7 @@ else:
             st.plotly_chart(fig4, use_container_width=True)
         with c4:
             st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
