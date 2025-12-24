@@ -55,6 +55,7 @@ basereal = st.secrets["urls"]["base_2025"]
 mapeo_ppt_url = st.secrets["urls"]["mapeo"]
 proyectos_url = st.secrets["urls"]["proyectos"]
 cecos_url = st.secrets["urls"]["cecos"]
+base_2026 = st.secrets["urls"]["base_ppt"]
 
 
 meses = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
@@ -871,11 +872,26 @@ else:
     ], as_index=False)["Neto_A"]
     .sum()
 )
+
+    df_base = cargar_datos(base_2026)
+    df_base = (
+        df_base
+        .groupby([
+            "Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A",
+            "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A"
+        ], as_index=False)["Neto_A"]
+        .sum()
+    )
+
     
     proyectos = cargar_datos(proyectos_url)
 
     df_ppt["Proyecto_A"] = df_ppt["Proyecto_A"].astype(str).str.strip()
     df_real["Proyecto_A"] = df_real["Proyecto_A"].astype(str).str.strip()
+    df_base["Proyecto_A"] = df_base["Proyecto_A"].astype(str).str.strip()
+    df_ppt["CeCo_A"] = df_ppt["CeCo_A"].astype(str).str.strip()
+    df_real["CeCo_A"] = df_real["CeCo_A"].astype(str).str.strip()
+    df_base["CeCo_A"] = df_base["CeCo_A"].astype(str).str.strip()
     proyectos["proyectos"] = proyectos["proyectos"].astype(str).str.strip()
     list_pro = proyectos["proyectos"].tolist()
     st.sidebar.success(f"👤 Usuario: {st.session_state['username']}")
@@ -2890,6 +2906,7 @@ else:
             st.plotly_chart(fig4, use_container_width=True)
         with c4:
             st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
