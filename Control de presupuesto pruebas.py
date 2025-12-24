@@ -951,9 +951,6 @@ else:
 
     if selected == "PPT YTD":
         def tabla_ppt_ytd(df_ppt):
-            """
-            PPT YTD = acumulado desde ene. hasta el mes seleccionado.
-            """
             meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
             meses_disponibles = [m for m in meses_ordenados if m in df_ppt["Mes_A"].unique().tolist()]
 
@@ -1412,33 +1409,41 @@ else:
 
             fig.add_trace(go.Bar(
                 x=tabla["Mes_A"],
-                y=tabla["PPT"],
-                name="Ingreso PPT"
+                y=tabla["PPT"] / 1000,
+                name="Ingreso PPT",
+                text=(tabla["PPT"] / 1000).round(1),
+                texttemplate="%{text}k",
+                textposition="outside"
             ))
 
             fig.add_trace(go.Bar(
                 x=tabla["Mes_A"],
-                y=tabla["REAL"],
-                name="Ingreso REAL"
+                y=tabla["REAL"] / 1000,
+                name="Ingreso REAL",
+                text=(tabla["REAL"] / 1000).round(1),
+                texttemplate="%{text}k",
+                textposition="outside"
             ))
 
             fig.update_layout(
                 title="Ingreso PPT vs REAL",
                 xaxis_title="Mes",
-                yaxis_title="Ingreso",
+                yaxis_title="Ingreso (miles)",
                 barmode="group",
                 hovermode="x unified",
                 legend_title="Tipo",
-                height=420
-            )                
+                height=420,
+                yaxis=dict(
+                    tickformat=",.0f",
+                    ticksuffix="k"
+                )
+            )
+
             st.plotly_chart(fig, use_container_width=True)
-
-
         col1, col2 = st.columns(2)
         meses_seleccionado = filtro_meses(col1, df_ppt)
         proyecto_codigo, proyecto_nombre = filtro_pro(col2)
         tabla_ingresos(df_ppt, df_real, meses_seleccionado, proyecto_codigo)
-
 
     elif selected == "OH":
 
@@ -1527,18 +1532,39 @@ else:
 
             # ✅ Gráfico (PPT vs REAL por mes; sin cambiar cálculos)
             fig = go.Figure()
-            fig.add_trace(go.Bar(x=tabla["Mes_A"], y=tabla["PPT"], name="PPT"))
-            fig.add_trace(go.Bar(x=tabla["Mes_A"], y=tabla["REAL"], name="REAL"))
+            
+            fig.add_trace(go.Bar(
+                x=tabla["Mes_A"],
+                y=tabla["PPT"] / 1000,
+                name="PPT",
+                text=(tabla["PPT"] / 1000).round(1),
+                texttemplate="%{text}k",
+                textposition="outside"
+            ))
+            
+            fig.add_trace(go.Bar(
+                x=tabla["Mes_A"],
+                y=tabla["REAL"] / 1000,
+                name="REAL",
+                text=(tabla["REAL"] / 1000).round(1),
+                texttemplate="%{text}k",
+                textposition="outside"
+            ))
+            
             fig.update_layout(
                 title="OH PPT vs REAL",
                 xaxis_title="Mes",
-                yaxis_title="Monto",
+                yaxis_title="Monto (miles)",
                 barmode="group",
                 height=420,
                 legend_title="Tipo",
+                yaxis=dict(
+                    tickformat=",.0f",
+                    ticksuffix="k"
+                )
             )
+            
             st.plotly_chart(fig, use_container_width=True)
-
             return tabla_final
         def agrid_oh_con_totales(df, filtro_col, filtro_val):
             df = df.copy()
@@ -1640,7 +1666,6 @@ else:
                     "OH - Tabla G.ADMN"
                 )
     elif selected == "Departamentos":
-
         def tabla_departamentos(df_ppt, df_real, meses_seleccionado, cecos_seleccionados, df_cecos):
             if not meses_seleccionado:
                 st.error("Favor de seleccionar por lo menos un mes")
@@ -1661,9 +1686,12 @@ else:
                 df["CeCo_A"] = df["CeCo_A"].astype(str).str.strip()
                 df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
                 df["Clasificacion_A"] = df["Clasificacion_A"].astype(str).str.strip()
+                if "Categoria_A" in df.columns:
+                    df["Categoria_A"] = df["Categoria_A"].astype(str).str.strip()
+
+                df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
 
             cecos_sel = [str(x).strip() for x in cecos_seleccionados]
-
             df_ppt_f = df_ppt[
                 (df_ppt["Mes_A"].isin(meses_seleccionado)) &
                 (df_ppt["Proyecto_A"].isin(proyectos_oh)) &
@@ -1694,7 +1722,21 @@ else:
             tabla["DIF"] = tabla["REAL"] - tabla["PPT"]
             tabla["%"] = np.where(tabla["PPT"] != 0, (tabla["REAL"] / tabla["PPT"]) - 1, 0.0)
 
-            # ---- Map CeCo -> Nombre (df_cecos debe ser DataFrame) ----
+            if "Categoria_A" in df_real.columns:
+                df_ing_real_total = df_real[
+                    (df_real["Mes_A"].isin(meses_seleccionado)) &
+                    (df_real["Categoria_A"] == "INGRESO")
+                ].copy()
+                ingreso_real_esgari = float(df_ing_real_total["Neto_A"].sum())
+            else:
+                ingreso_real_esgari = 0.0
+
+            # ✅ Nueva métrica: DIF / Ingreso REAL ESGARI
+            tabla["% s/ ingreso"] = np.where(
+                ingreso_real_esgari != 0,
+                tabla["DIF"] / ingreso_real_esgari,
+                0.0
+            )
             df_cecos_map = df_cecos.copy()
             df_cecos_map["ceco"] = df_cecos_map["ceco"].astype(str).str.strip()
             df_cecos_map["nombre"] = df_cecos_map["nombre"].astype(str).str.strip()
@@ -1711,32 +1753,31 @@ else:
             )
 
             tabla["ceco"] = tabla["ceco"].fillna(tabla["CeCo_A"])
-            tabla = tabla[["ceco", "REAL", "PPT", "DIF", "%"]]
 
-            # Total
+            # ✅ SOLO columnas visibles
+            tabla = tabla[["ceco", "REAL", "PPT", "DIF", "%", "% s/ ingreso"]]
             total_ppt = float(tabla["PPT"].sum())
             total_real = float(tabla["REAL"].sum())
             total_dif = total_real - total_ppt
             total_pct = (total_real / total_ppt - 1) if total_ppt != 0 else 0.0
+            total_pct_s_ing = (total_dif / ingreso_real_esgari) if ingreso_real_esgari != 0 else 0.0
 
             total_row = pd.DataFrame([{
                 "ceco": "TOTAL",
                 "REAL": total_real,
                 "PPT": total_ppt,
                 "DIF": total_dif,
-                "%": total_pct
+                "%": total_pct,
+                "% s/ ingreso": total_pct_s_ing
             }])
 
             tabla_final = pd.concat([tabla, total_row], ignore_index=True)
-
             def color_fila(row):
                 if row["ceco"] == "TOTAL":
                     return ["background-color:#FFFFFF;color:black;font-weight:bold"] * len(row)
 
                 v = float(row["%"]) if pd.notnull(row["%"]) else 0.0
-
-                # ✅ color por defecto (cuando 0 < v < 0.10)
-                bg = "#FFFFFF"  # amarillo (puedes cambiarlo si quieres)
+                bg = "#FFFFFF"
 
                 if v <= 0:
                     bg = "#92D050"   # verde
@@ -1763,29 +1804,20 @@ else:
                         "REAL": "${:,.2f}",
                         "PPT": "${:,.2f}",
                         "DIF": "${:,.2f}",
-                        "%": "{:.2%}"
+                        "%": "{:.2%}",
+                        "% s/ ingreso": "{:.2%}",
                     }),
                 use_container_width=True,
                 height=520
             )
-
             tabla_graf = tabla_final[tabla_final["ceco"] != "TOTAL"].copy()
 
             if not tabla_graf.empty:
                 fig = go.Figure()
+                fig.add_bar(x=tabla_graf["ceco"], y=tabla_graf["REAL"], name="REAL")
+                fig.add_bar(x=tabla_graf["ceco"], y=tabla_graf["PPT"], name="PPT")
 
-                fig.add_bar(
-                    x=tabla_graf["ceco"],
-                    y=tabla_graf["REAL"],
-                    name="REAL"
-                )
-                fig.add_bar(
-                    x=tabla_graf["ceco"],
-                    y=tabla_graf["PPT"],
-                    name="PPT"
-                )
-
-                for i, ceco in enumerate(tabla_graf["ceco"].tolist()):
+                for ceco in tabla_graf["ceco"].tolist():
                     real_v = float(tabla_graf.loc[tabla_graf["ceco"] == ceco, "REAL"].values[0])
                     ppt_v  = float(tabla_graf.loc[tabla_graf["ceco"] == ceco, "PPT"].values[0])
                     inc = (real_v / ppt_v - 1) if ppt_v != 0 else 0.0
@@ -1831,7 +1863,6 @@ else:
         )
 
     elif selected == "Proyectos":
-
         def tabla_proyectos(df_ppt, df_real, meses_seleccionado, cecos_seleccionados, df_proyectos, proyectos_seleccionados):
             """
             Salida como la imagen:
@@ -2083,19 +2114,39 @@ else:
             )
             if not tabla.empty:
                 fig = go.Figure()
-                fig.add_bar(x=tabla["Cuenta_Nombre_A"], y=tabla["PPT"], name="PPT")
-                fig.add_bar(x=tabla["Cuenta_Nombre_A"], y=tabla["REAL"], name="REAL")
-
+                
+                fig.add_bar(
+                    x=tabla["Cuenta_Nombre_A"],
+                    y=tabla["PPT"] / 1000,
+                    name="PPT",
+                    text=(tabla["PPT"] / 1000).round(1),
+                    texttemplate="%{text}k",
+                    textposition="outside"
+                )
+                
+                fig.add_bar(
+                    x=tabla["Cuenta_Nombre_A"],
+                    y=tabla["REAL"] / 1000,
+                    name="REAL",
+                    text=(tabla["REAL"] / 1000).round(1),
+                    texttemplate="%{text}k",
+                    textposition="outside"
+                )
+                
                 fig.update_layout(
                     title="PPT vs REAL por Cuenta",
                     xaxis_title="Cuenta",
-                    yaxis_title="Monto",
+                    yaxis_title="Monto (miles)",
                     barmode="group",
                     height=420,
                     legend_title="Tipo",
-                    xaxis_tickangle=-30
+                    xaxis_tickangle=-30,
+                    yaxis=dict(
+                        tickformat=",.0f",
+                        ticksuffix="k"
+                    )
                 )
-
+                
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Sin datos con los filtros seleccionados.")
@@ -2458,28 +2509,49 @@ else:
         y_ppt  = [ppt_por_proy.get(n, 0.0) for n in x]
         y_inc  = [inc_por_proy.get(n, 0.0) for n in x]
 
+        y_real_k = [v / 1000 for v in y_real]
+        y_ppt_k  = [v / 1000 for v in y_ppt]
+        
         fig = go.Figure()
-        fig.add_bar(x=x, y=y_real, name="YTD REAL")
-        fig.add_bar(x=x, y=y_ppt,  name="PPT")
-
-        # Etiquetas de incremento %
+        fig.add_bar(
+            x=x, y=y_real_k, name="YTD REAL",
+            text=[round(v, 1) for v in y_real_k],
+            texttemplate="%{text}k",
+            textposition="inside",          # ✅ dentro (menos amontonado)
+            insidetextanchor="middle",
+            cliponaxis=False
+        )
+        fig.add_bar(
+            x=x, y=y_ppt_k, name="PPT",
+            text=[round(v, 1) for v in y_ppt_k],
+            texttemplate="%{text}k",
+            textposition="inside",          # ✅ dentro (menos amontonado)
+            insidetextanchor="middle",
+            cliponaxis=False
+        )
+        
+        # Etiquetas de incremento % (usa el "top" en miles)
         for i, n in enumerate(x):
-            top = max(y_real[i], y_ppt[i])
+            top = max(y_real_k[i], y_ppt_k[i])
             fig.add_annotation(
                 x=n,
-                y=top * 1.08 if top != 0 else 0,
+                y=top * 1.18 if top != 0 else 0,  # un poco más alto para no chocar con textos
                 text=f"{y_inc[i]*100:,.2f}%",
                 showarrow=False
             )
-
+        
         fig.update_layout(
-            title=f"Ingresos",
+            title="Ingresos",
             xaxis_title="Proyecto",
-            yaxis_title="MXN",
+            yaxis_title="MXN (miles)",
             barmode="group",
             height=520,
             hovermode="x unified",
-            xaxis_tickangle=-25
+            xaxis_tickangle=-25,
+            yaxis=dict(tickformat=",.0f", ticksuffix="k"),
+            uniformtext_minsize=10,
+            uniformtext_mode="hide",
+            margin=dict(t=80)
         )
 
         st.markdown("### 📈 Gráfico de Ingresos")
@@ -2701,7 +2773,7 @@ else:
         tabla_diferencias(df_ppt, df_base)
 
 
-    elif selected == "DASHBOARD":
+    elif selected == "Dashboard":
         meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
 
         def _ordenar_meses(df, col_mes="Mes_A"):
@@ -2945,6 +3017,7 @@ else:
                 st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
             else:
                 st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
