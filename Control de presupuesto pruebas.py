@@ -875,13 +875,13 @@ else:
 
     df_base = cargar_datos(base_2026)
     df_base = (
-        df_base
-        .groupby([
-            "Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A",
-            "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A"
-        ], as_index=False)["Neto_A"]
-        .sum()
-    )
+    df_base
+    .groupby([
+        "Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A",
+        "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A"
+    ], as_index=False)["Neto_A"]
+    .sum()
+)
 
     
     proyectos = cargar_datos(proyectos_url)
@@ -2906,6 +2906,7 @@ else:
             st.plotly_chart(fig4, use_container_width=True)
         with c4:
             st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
