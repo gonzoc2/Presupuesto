@@ -2598,6 +2598,7 @@ else:
         st.subheader("Cambios base de datos (df_base vs df_ppt)")
 
         def tabla_diferencias(df_ppt: pd.DataFrame, df_base: pd.DataFrame):
+
             if df_base is None or df_base.empty:
                 st.warning("df_base está vacío o no existe.")
                 return None
@@ -2605,98 +2606,140 @@ else:
                 st.warning("df_ppt está vacío o no existe.")
                 return None
 
-            key_cols = ["Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A"]
-            cols_show = [
+            # --------------------------------------------------
+            # 1) Combinación EXACTA (sin Usuario_A)
+            # --------------------------------------------------
+            key_full = [
                 "Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A",
-                "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A",
-                "Neto_A_BASE", "Neto_A_PPT", "DIF_NETO"
+                "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A", "Neto_A"
             ]
-            compare_cols = ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A"]
+
+            # Key lógica para detectar MODIFICADO
+            key_sin_neto = [
+                "Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A"
+            ]
 
             base = df_base.copy()
             ppt  = df_ppt.copy()
 
-            required = set(key_cols + compare_cols + ["Neto_A"])
-            faltan_base = required - set(base.columns)
-            faltan_ppt  = required - set(ppt.columns)
+            # --------------------------------------------------
+            # 2) Validación de columnas
+            # --------------------------------------------------
+            faltan_base = set(key_full) - set(base.columns)
+            faltan_ppt  = set(key_full) - set(ppt.columns)
 
             if faltan_base:
-                st.error(f"df_base no contiene columnas requeridas: {sorted(list(faltan_base))}")
+                st.error(f"df_base no contiene columnas requeridas: {sorted(faltan_base)}")
                 return None
             if faltan_ppt:
-                st.error(f"df_ppt no contiene columnas requeridas: {sorted(list(faltan_ppt))}")
+                st.error(f"df_ppt no contiene columnas requeridas: {sorted(faltan_ppt)}")
                 return None
 
+            # --------------------------------------------------
+            # 3) Normalización
+            # --------------------------------------------------
             for df in (base, ppt):
-                for c in key_cols + compare_cols:
-                    df[c] = df[c].astype(str).str.strip()
+                for c in key_full:
+                    if c != "Neto_A":
+                        df[c] = df[c].astype(str).str.strip()
                 df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
 
-            cmp = base.merge(
-                ppt,
-                on=key_cols,
-                how="outer",
-                suffixes=("_BASE", "_PPT"),
-                indicator=True
-            )
+            # --------------------------------------------------
+            # 4) Llave compuesta EXACTA
+            # --------------------------------------------------
+            def make_key(df):
+                neto = df["Neto_A"].round(2).astype(str)
+                partes = [df[c].astype(str) for c in key_full if c != "Neto_A"] + [neto]
+                return partes[0].str.cat(partes[1:], sep="||")
 
-            def tipo_cambio(row):
-                if row["_merge"] == "left_only":
-                    return "ELIMINADO"
-                if row["_merge"] == "right_only":
-                    return "NUEVO"
+            base["_KEY_FULL"] = make_key(base)
+            ppt["_KEY_FULL"]  = make_key(ppt)
 
-                if float(row.get("Neto_A_BASE", 0) or 0) != float(row.get("Neto_A_PPT", 0) or 0):
-                    return "MODIFICADO"
+            base_u = base.drop_duplicates("_KEY_FULL")
+            ppt_u  = ppt.drop_duplicates("_KEY_FULL")
 
-                for c in compare_cols:
-                    a = str(row.get(f"{c}_BASE", "") or "").strip()
-                    b = str(row.get(f"{c}_PPT", "") or "").strip()
-                    if a != b:
-                        return "MODIFICADO"
-                return "SIN CAMBIO"
+            # --------------------------------------------------
+            # 5) NUEVOS / ELIMINADOS
+            # --------------------------------------------------
+            nuevos = ppt_u[~ppt_u["_KEY_FULL"].isin(base_u["_KEY_FULL"])].copy()
+            eliminados = base_u[~base_u["_KEY_FULL"].isin(ppt_u["_KEY_FULL"])].copy()
 
-            cmp["TIPO_CAMBIO"] = cmp.apply(tipo_cambio, axis=1)
-            cambios = cmp[cmp["TIPO_CAMBIO"] != "SIN CAMBIO"].copy()
+            # --------------------------------------------------
+            # 6) MODIFICADOS (misma key_sin_neto, distinto contenido)
+            # --------------------------------------------------
+            for df in (base, ppt):
+                df["_KEY_SIN_NETO"] = df[key_sin_neto].astype(str).agg("||".join, axis=1)
 
-            if cambios.empty:
-                st.success("No hay modificaciones entre df_base y df_ppt.")
+            comunes = set(base["_KEY_SIN_NETO"]).intersection(ppt["_KEY_SIN_NETO"])
+
+            mods = []
+            for k in comunes:
+                b = base[base["_KEY_SIN_NETO"] == k]
+                p = ppt[ppt["_KEY_SIN_NETO"] == k]
+
+                if set(b["_KEY_FULL"]) != set(p["_KEY_FULL"]):
+                    rb = b.iloc[0]
+                    rp = p.iloc[0]
+
+                    d = {c: rp[c] for c in key_full if c != "Neto_A"}
+                    d["Neto_A_BASE"] = rb["Neto_A"]
+                    d["Neto_A_PPT"]  = rp["Neto_A"]
+                    d["DIF_NETO"]    = d["Neto_A_PPT"] - d["Neto_A_BASE"]
+                    d["TIPO_CAMBIO"] = "MODIFICADO"
+                    mods.append(d)
+
+            df_mods = pd.DataFrame(mods)
+
+            # Quitar duplicados NUEVO / ELIMINADO cuando ya es MODIFICADO
+            if not df_mods.empty:
+                keys_mod = set(df_mods[key_sin_neto].astype(str).agg("||".join, axis=1))
+                nuevos["_KEY_SIN_NETO"] = nuevos[key_sin_neto].astype(str).agg("||".join, axis=1)
+                eliminados["_KEY_SIN_NETO"] = eliminados[key_sin_neto].astype(str).agg("||".join, axis=1)
+
+                nuevos = nuevos[~nuevos["_KEY_SIN_NETO"].isin(keys_mod)]
+                eliminados = eliminados[~eliminados["_KEY_SIN_NETO"].isin(keys_mod)]
+
+            # --------------------------------------------------
+            # 7) Formato de salida
+            # --------------------------------------------------
+            def prep(df, tipo):
+                if df.empty:
+                    return pd.DataFrame()
+
+                out = df[key_full].copy()
+                out["TIPO_CAMBIO"] = tipo
+
+                if tipo == "NUEVO":
+                    out["Neto_A_BASE"] = 0.0
+                    out["Neto_A_PPT"]  = out["Neto_A"]
+                elif tipo == "ELIMINADO":
+                    out["Neto_A_BASE"] = out["Neto_A"]
+                    out["Neto_A_PPT"]  = 0.0
+
+                out["DIF_NETO"] = out["Neto_A_PPT"] - out["Neto_A_BASE"]
+                return out.drop(columns=["Neto_A"], errors="ignore")
+
+            out_final = pd.concat([
+                prep(nuevos, "NUEVO"),
+                df_mods,
+                prep(eliminados, "ELIMINADO")
+            ], ignore_index=True)
+
+            if out_final.empty:
+                st.success("No hay diferencias: todas las combinaciones coinciden.")
                 return None
 
-            cambios["Neto_A_BASE"] = pd.to_numeric(cambios.get("Neto_A_BASE", 0), errors="coerce").fillna(0.0)
-            cambios["Neto_A_PPT"]  = pd.to_numeric(cambios.get("Neto_A_PPT", 0), errors="coerce").fillna(0.0)
-            cambios["DIF_NETO"] = cambios["Neto_A_PPT"] - cambios["Neto_A_BASE"]
-
-            for c in compare_cols:
-                base_col = f"{c}_BASE"
-                ppt_col  = f"{c}_PPT"
-                if base_col not in cambios.columns:
-                    cambios[base_col] = ""
-                if ppt_col not in cambios.columns:
-                    cambios[ppt_col] = ""
-
-            # columna final preferida PPT
-            for c in ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A"]:
-                cambios[c] = cambios.get(f"{c}_PPT", "").astype(str).replace("nan", "").fillna("")
-                mask = cambios[c].eq("")
-                cambios.loc[mask, c] = cambios.get(f"{c}_BASE", "").astype(str).replace("nan", "").fillna("")
-
-            out = cambios.copy()
-            for c in cols_show:
-                if c not in out.columns:
-                    out[c] = ""
-
-            out_final = out[["TIPO_CAMBIO"] + cols_show].copy()
-
-            orden_tipo = {"NUEVO": 0, "MODIFICADO": 1, "ELIMINADO": 2}
-            out_final["__ord"] = out_final["TIPO_CAMBIO"].map(orden_tipo).fillna(9).astype(int)
-            out_final = out_final.sort_values(["__ord", "Mes_A", "Proyecto_A", "Cuenta_A"]).drop(columns="__ord")
+            orden = {"NUEVO": 0, "MODIFICADO": 1, "ELIMINADO": 2}
+            out_final["__ord"] = out_final["TIPO_CAMBIO"].map(orden).fillna(9)
+            out_final = out_final.sort_values(
+                ["__ord", "Mes_A", "Empresa_A", "Proyecto_A", "Cuenta_A"]
+            ).drop(columns="__ord")
 
             st.write(
                 f"Registros con cambios: **{len(out_final)}** | "
-                f"NUEVOS: **{sum(out_final['TIPO_CAMBIO']=='NUEVO')}** | "
-                f"MODIFICADOS: **{sum(out_final['TIPO_CAMBIO']=='MODIFICADO')}** | "
-                f"ELIMINADOS: **{sum(out_final['TIPO_CAMBIO']=='ELIMINADO')}**"
+                f"NUEVOS: **{sum(out_final.TIPO_CAMBIO=='NUEVO')}** | "
+                f"MODIFICADOS: **{sum(out_final.TIPO_CAMBIO=='MODIFICADO')}** | "
+                f"ELIMINADOS: **{sum(out_final.TIPO_CAMBIO=='ELIMINADO')}**"
             )
 
             st.dataframe(
@@ -2710,58 +2753,42 @@ else:
             )
 
             return out_final
-        # 2) COMPARA
+
         tabla_diferencias(df_ppt, df_base)
 
-            
+
     elif selected == "DASHBOARD":
         meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
-        meses_disponibles = [
-            m for m in meses_ordenados
-            if (m in df_ppt["Mes_A"].astype(str).unique()) or (m in df_real["Mes_A"].astype(str).unique())
-        ]
 
-        meses_sel = st.multiselect(
-            "Selecciona mes(es):",
-            options=meses_disponibles,
-            default=meses_disponibles[-1:] if meses_disponibles else [],
-            key="dashboard_meses_excel"
-        )
-        if not meses_sel:
-            st.error("Favor de seleccionar por lo menos un mes.")
-            st.stop()
-            with st.expander("🛠 Diagnóstico DASHBOARD", expanded=True):
-                try:
-                    st.write("df_ppt shape:", getattr(df_ppt, "shape", None))
-                    st.write("df_real shape:", getattr(df_real, "shape", None))
-            
-                    st.write("Columnas PPT:", list(getattr(df_ppt, "columns", [])))
-                    st.write("Columnas REAL:", list(getattr(df_real, "columns", [])))
-            
-                    if "Mes_A" in df_ppt.columns:
-                        st.write("Meses PPT:", sorted(df_ppt["Mes_A"].astype(str).str.strip().unique().tolist()))
-                    if "Mes_A" in df_real.columns:
-                        st.write("Meses REAL:", sorted(df_real["Mes_A"].astype(str).str.strip().unique().tolist()))
-            
-                    st.write("meses_disponibles:", meses_disponibles)
-                    st.write("meses_sel:", meses_sel)
-                except Exception as e:
-                    st.exception(e)
-                    st.stop()
-
-
-        proyectos_local = proyectos.copy()
-        proyectos_local["proyectos"] = proyectos_local["proyectos"].astype(str).str.strip()
-        proyectos_local["nombre"] = proyectos_local["nombre"].astype(str).str.strip()
-        df_visibles = proyectos_local.dropna(subset=["proyectos", "nombre"]).copy()
         def _ordenar_meses(df, col_mes="Mes_A"):
+            df = df.copy()
             orden = {m: i for i, m in enumerate(meses_ordenados)}
             df["__ord"] = df[col_mes].map(orden).fillna(999).astype(int)
             df = df.sort_values("__ord").drop(columns="__ord")
             return df
 
+        def to_float(x):
+            if x is None:
+                return 0.0
+            if isinstance(x, str):
+                x = x.replace("%", "").strip()
+                try:
+                    v = float(x)
+                    return v / 100 if v > 1 else v
+                except:
+                    return 0.0
+            try:
+                return float(x)
+            except:
+                return 0.0
+
         def _ingresos_total_por_mes(df, meses):
             base = df.copy()
+            base.columns = base.columns.astype(str).str.strip()
+
+            if "Mes_A" not in base.columns or "Categoria_A" not in base.columns or "Neto_A" not in base.columns:
+                return pd.DataFrame({"Mes_A": [], "INGRESO": []})
+
             base["Mes_A"] = base["Mes_A"].astype(str).str.strip()
             base["Categoria_A"] = base["Categoria_A"].astype(str).str.strip()
             base["Neto_A"] = pd.to_numeric(base["Neto_A"], errors="coerce").fillna(0)
@@ -2771,11 +2798,15 @@ else:
                 .groupby("Mes_A", as_index=False)["Neto_A"].sum()
                 .rename(columns={"Neto_A": "INGRESO"})
             )
-            out = _ordenar_meses(out, "Mes_A")
-            return out
+            return _ordenar_meses(out, "Mes_A")
 
         def _COSS_total(df, meses):
             base = df.copy()
+            base.columns = base.columns.astype(str).str.strip()
+
+            if "Mes_A" not in base.columns or "Clasificacion_A" not in base.columns or "Neto_A" not in base.columns:
+                return pd.DataFrame({"Mes_A": [], "COSS": []})
+
             base["Mes_A"] = base["Mes_A"].astype(str).str.strip()
             base["Clasificacion_A"] = base["Clasificacion_A"].astype(str).str.strip()
             base["Neto_A"] = pd.to_numeric(base["Neto_A"], errors="coerce").fillna(0)
@@ -2785,11 +2816,15 @@ else:
                 .groupby("Mes_A", as_index=False)["Neto_A"].sum()
                 .rename(columns={"Neto_A": "COSS"})
             )
-            out = _ordenar_meses(out, "Mes_A")
-            return out
+            return _ordenar_meses(out, "Mes_A")
 
         def _GADMN_total(df, meses):
             base = df.copy()
+            base.columns = base.columns.astype(str).str.strip()
+
+            if "Mes_A" not in base.columns or "Clasificacion_A" not in base.columns or "Neto_A" not in base.columns:
+                return pd.DataFrame({"Mes_A": [], "G.ADMN": []})
+
             base["Mes_A"] = base["Mes_A"].astype(str).str.strip()
             base["Clasificacion_A"] = base["Clasificacion_A"].astype(str).str.strip()
             base["Neto_A"] = pd.to_numeric(base["Neto_A"], errors="coerce").fillna(0)
@@ -2799,12 +2834,24 @@ else:
                 .groupby("Mes_A", as_index=False)["Neto_A"].sum()
                 .rename(columns={"Neto_A": "G.ADMN"})
             )
-            out = _ordenar_meses(out, "Mes_A")
-            return out
+            return _ordenar_meses(out, "Mes_A")
 
         def _linea_ppt_real(df_ppt_mes, df_real_mes, titulo):
+            if df_ppt_mes is None:
+                df_ppt_mes = pd.DataFrame({"Mes_A": [], "PPT": []})
+            if df_real_mes is None:
+                df_real_mes = pd.DataFrame({"Mes_A": [], "REAL": []})
+
             line = df_ppt_mes.merge(df_real_mes, on="Mes_A", how="outer").fillna(0)
+
+            if "PPT" not in line.columns:
+                line["PPT"] = 0
+            if "REAL" not in line.columns:
+                line["REAL"] = 0
+
             line = _ordenar_meses(line, "Mes_A")
+            if line.empty:
+                return None
 
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=line["Mes_A"], y=line["PPT"], mode="lines+markers", name="PPT"))
@@ -2818,13 +2865,65 @@ else:
             )
             return fig
 
+        df_ppt = df_ppt.copy()
+        df_real = df_real.copy()
+        df_ppt.columns = df_ppt.columns.astype(str).str.strip()
+        df_real.columns = df_real.columns.astype(str).str.strip()
+        if "Mes_A" not in df_ppt.columns or "Mes_A" not in df_real.columns:
+            st.error("Falta la columna Mes_A en df_ppt o df_real. Revisa nombres de columnas.")
+            with st.expander("🛠 Diagnóstico DASHBOARD", expanded=True):
+                st.write("Columnas PPT:", list(df_ppt.columns))
+                st.write("Columnas REAL:", list(df_real.columns))
+            st.stop()
+
+        meses_ppt = df_ppt["Mes_A"].astype(str).str.strip().unique().tolist()
+        meses_real = df_real["Mes_A"].astype(str).str.strip().unique().tolist()
+
+        meses_disponibles = [m for m in meses_ordenados if (m in meses_ppt) or (m in meses_real)]
+
+        meses_sel = st.multiselect(
+            "Selecciona mes(es):",
+            options=meses_disponibles,
+            default=meses_disponibles[-1:] if meses_disponibles else [],
+            key="dashboard_meses_excel"
+        )
+
+        # ✅ Diagnóstico SIEMPRE antes del stop
+        with st.expander("🛠 Diagnóstico DASHBOARD", expanded=False):
+            try:
+                st.write("df_ppt shape:", df_ppt.shape)
+                st.write("df_real shape:", df_real.shape)
+                st.write("Columnas PPT:", list(df_ppt.columns))
+                st.write("Columnas REAL:", list(df_real.columns))
+                st.write("Meses PPT:", sorted(meses_ppt))
+                st.write("Meses REAL:", sorted(meses_real))
+                st.write("meses_disponibles:", meses_disponibles)
+                st.write("meses_sel:", meses_sel)
+            except Exception as e:
+                st.exception(e)
+
+        if not meses_sel:
+            st.error("Favor de seleccionar por lo menos un mes.")
+            st.stop()
+        proyectos_local = proyectos.copy()
+        proyectos_local.columns = proyectos_local.columns.astype(str).str.strip()
+
+        if "proyectos" not in proyectos_local.columns or "nombre" not in proyectos_local.columns:
+            st.error("El dataframe 'proyectos' debe tener columnas: 'proyectos' y 'nombre'.")
+            with st.expander("🛠 Diagnóstico PROYECTOS", expanded=True):
+                st.write("Columnas proyectos:", list(proyectos_local.columns))
+            st.stop()
+
+        proyectos_local["proyectos"] = proyectos_local["proyectos"].astype(str).str.strip()
+        proyectos_local["nombre"] = proyectos_local["nombre"].astype(str).str.strip()
+        df_visibles = proyectos_local.dropna(subset=["proyectos", "nombre"]).copy()
+
+        nombres = df_visibles["nombre"].tolist()
+        codigos = df_visibles["proyectos"].tolist()
+
         ing_ppt_mes = _ingresos_total_por_mes(df_ppt, meses_sel).rename(columns={"INGRESO": "PPT"})
         ing_real_mes = _ingresos_total_por_mes(df_real, meses_sel).rename(columns={"INGRESO": "REAL"})
         fig1 = _linea_ppt_real(ing_ppt_mes, ing_real_mes, "INGRESO")
-        if fig1 is None:
-            st.info("No hay datos de Ingresos para los meses seleccionados.")
-        else:
-            st.plotly_chart(fig1, use_container_width=True)
 
         coss_ppt_mes = _COSS_total(df_ppt, meses_sel).rename(columns={"COSS": "PPT"})
         coss_real_mes = _COSS_total(df_real, meses_sel).rename(columns={"COSS": "REAL"})
@@ -2833,23 +2932,22 @@ else:
         gadmn_ppt_mes = _GADMN_total(df_ppt, meses_sel).rename(columns={"G.ADMN": "PPT"})
         gadmn_real_mes = _GADMN_total(df_real, meses_sel).rename(columns={"G.ADMN": "REAL"})
         fig4 = _linea_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN")
-        nombres = df_visibles["nombre"].tolist()
-        codigos = df_visibles["proyectos"].tolist()
-
         ppt_pct = {}
         real_pct = {}
 
         for nombre, codigo in zip(nombres, codigos):
             codigo_list = [str(codigo)]
-            er_ppt = estado_resultado(df_ppt, meses_sel, nombre, codigo_list, list_pro)
-            er_real = estado_resultado(df_real, meses_sel, nombre, codigo_list, list_pro)
-            ppt_pct[nombre] = float(er_ppt.get("por_utilidad_operativa", 0) or 0.0)
-            real_pct[nombre] = float(er_real.get("por_utilidad_operativa", 0) or 0.0)
+
+            er_ppt = estado_resultado(df_ppt, meses_sel, nombre, codigo_list, list_pro) or {}
+            er_real = estado_resultado(df_real, meses_sel, nombre, codigo_list, list_pro) or {}
+
+            ppt_pct[nombre] = to_float(er_ppt.get("por_utilidad_operativa"))
+            real_pct[nombre] = to_float(er_real.get("por_utilidad_operativa"))
 
         df_uo = pd.DataFrame({
             "Proyecto": nombres,
-            "PPT": [ppt_pct[n] for n in nombres],
-            "REAL": [real_pct[n] for n in nombres],
+            "PPT": [ppt_pct.get(n, 0.0) for n in nombres],
+            "REAL": [real_pct.get(n, 0.0) for n in nombres],
         }).sort_values("REAL", ascending=False)
 
         fig2 = go.Figure()
@@ -2875,20 +2973,36 @@ else:
             height=520,
             hovermode="x unified",
             xaxis_tickangle=-25,
-            yaxis_tickformat=".0%"
+            xaxis_tickformat=".0%"
         )
 
         c1, c2 = st.columns(2)
         with c1:
-            st.plotly_chart(fig1, use_container_width=True)
+            if fig1 is None:
+                st.info("No hay datos de INGRESO para los meses seleccionados.")
+            else:
+                st.plotly_chart(fig1, use_container_width=True)
+
         with c2:
-            st.plotly_chart(fig3, use_container_width=True)
+            if fig3 is None:
+                st.info("No hay datos de COSS para los meses seleccionados.")
+            else:
+                st.plotly_chart(fig3, use_container_width=True)
 
         c3, c4 = st.columns(2)
         with c3:
-            st.plotly_chart(fig4, use_container_width=True)
+            if fig4 is None:
+                st.info("No hay datos de G.ADMN para los meses seleccionados.")
+            else:
+                st.plotly_chart(fig4, use_container_width=True)
+
         with c4:
-            st.plotly_chart(fig2, use_container_width=True)
+            if df_uo.empty:
+                st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
+            else:
+                st.plotly_chart(fig2, use_container_width=True)
+
+
 
 
 
