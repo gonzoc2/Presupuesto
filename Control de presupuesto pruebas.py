@@ -2690,13 +2690,8 @@ else:
 
             # (opcional) ya no necesitas mostrar Neto_A original porque tienes base/ppt
             out_show = out_final.drop(columns=["Neto_A"], errors="ignore")
-
             st.dataframe(
-                out_show.style.format({
-                    "Neto_A_BASE": "${:,.2f}",
-                    "Neto_A_PPT": "${:,.2f}",
-                    "DIF_NETO": "${:,.2f}",
-                }),
+                out_show,
                 use_container_width=True,
                 height=520
             )
@@ -2950,6 +2945,7 @@ else:
                 st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
             else:
                 st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
