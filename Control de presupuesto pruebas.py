@@ -2606,28 +2606,18 @@ else:
                 st.warning("df_ppt está vacío o no existe.")
                 return None
 
-            # --------------------------------------------------
-            # 1) Combinación EXACTA (sin Usuario_A)
-            # --------------------------------------------------
+            # Combinación EXACTA (sin Usuario_A)
             key_full = [
                 "Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A",
                 "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A", "Neto_A"
             ]
 
-            # Key lógica para detectar MODIFICADO
-            key_sin_neto = [
-                "Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A"
-            ]
-
             base = df_base.copy()
             ppt  = df_ppt.copy()
 
-            # --------------------------------------------------
-            # 2) Validación de columnas
-            # --------------------------------------------------
+            # Validación de columnas
             faltan_base = set(key_full) - set(base.columns)
             faltan_ppt  = set(key_full) - set(ppt.columns)
-
             if faltan_base:
                 st.error(f"df_base no contiene columnas requeridas: {sorted(faltan_base)}")
                 return None
@@ -2635,115 +2625,74 @@ else:
                 st.error(f"df_ppt no contiene columnas requeridas: {sorted(faltan_ppt)}")
                 return None
 
-            # --------------------------------------------------
-            # 3) Normalización
-            # --------------------------------------------------
+            # Normalización (más robusta)
             for df in (base, ppt):
                 for c in key_full:
                     if c != "Neto_A":
-                        df[c] = df[c].astype(str).str.strip()
-                df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
+                        df[c] = (
+                            df[c].astype(str)
+                            .str.replace(r"\s+", " ", regex=True)  # colapsa espacios raros
+                            .str.strip()
+                            .str.upper()                           # evita diferencias por may/min
+                        )
+                # Neto: limpia comas y convierte
+                df["Neto_A"] = (
+                    df["Neto_A"].astype(str)
+                    .str.replace(",", "", regex=False)
+                )
+                df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0).round(2)
 
-            # --------------------------------------------------
-            # 4) Llave compuesta EXACTA
-            # --------------------------------------------------
+            # Llave compuesta EXACTA
             def make_key(df):
-                neto = df["Neto_A"].round(2).astype(str)
-                partes = [df[c].astype(str) for c in key_full if c != "Neto_A"] + [neto]
+                partes = [df[c].astype(str) for c in key_full if c != "Neto_A"] + [df["Neto_A"].astype(str)]
                 return partes[0].str.cat(partes[1:], sep="||")
 
             base["_KEY_FULL"] = make_key(base)
             ppt["_KEY_FULL"]  = make_key(ppt)
 
+            # Quita duplicados exactos por si acaso
             base_u = base.drop_duplicates("_KEY_FULL")
             ppt_u  = ppt.drop_duplicates("_KEY_FULL")
 
-            # --------------------------------------------------
-            # 5) NUEVOS / ELIMINADOS
-            # --------------------------------------------------
+            # Diferencias exactas
             nuevos = ppt_u[~ppt_u["_KEY_FULL"].isin(base_u["_KEY_FULL"])].copy()
             eliminados = base_u[~base_u["_KEY_FULL"].isin(ppt_u["_KEY_FULL"])].copy()
 
-            # --------------------------------------------------
-            # 6) MODIFICADOS (misma key_sin_neto, distinto contenido)
-            # --------------------------------------------------
-            for df in (base, ppt):
-                df["_KEY_SIN_NETO"] = df[key_sin_neto].astype(str).agg("||".join, axis=1)
-
-            comunes = set(base["_KEY_SIN_NETO"]).intersection(ppt["_KEY_SIN_NETO"])
-
-            mods = []
-            for k in comunes:
-                b = base[base["_KEY_SIN_NETO"] == k]
-                p = ppt[ppt["_KEY_SIN_NETO"] == k]
-
-                if set(b["_KEY_FULL"]) != set(p["_KEY_FULL"]):
-                    rb = b.iloc[0]
-                    rp = p.iloc[0]
-
-                    d = {c: rp[c] for c in key_full if c != "Neto_A"}
-                    d["Neto_A_BASE"] = rb["Neto_A"]
-                    d["Neto_A_PPT"]  = rp["Neto_A"]
-                    d["DIF_NETO"]    = d["Neto_A_PPT"] - d["Neto_A_BASE"]
-                    d["TIPO_CAMBIO"] = "MODIFICADO"
-                    mods.append(d)
-
-            df_mods = pd.DataFrame(mods)
-
-            # Quitar duplicados NUEVO / ELIMINADO cuando ya es MODIFICADO
-            if not df_mods.empty:
-                keys_mod = set(df_mods[key_sin_neto].astype(str).agg("||".join, axis=1))
-                nuevos["_KEY_SIN_NETO"] = nuevos[key_sin_neto].astype(str).agg("||".join, axis=1)
-                eliminados["_KEY_SIN_NETO"] = eliminados[key_sin_neto].astype(str).agg("||".join, axis=1)
-
-                nuevos = nuevos[~nuevos["_KEY_SIN_NETO"].isin(keys_mod)]
-                eliminados = eliminados[~eliminados["_KEY_SIN_NETO"].isin(keys_mod)]
-
-            # --------------------------------------------------
-            # 7) Formato de salida
-            # --------------------------------------------------
-            def prep(df, tipo):
-                if df.empty:
-                    return pd.DataFrame()
-
-                out = df[key_full].copy()
-                out["TIPO_CAMBIO"] = tipo
-
-                if tipo == "NUEVO":
-                    out["Neto_A_BASE"] = 0.0
-                    out["Neto_A_PPT"]  = out["Neto_A"]
-                elif tipo == "ELIMINADO":
-                    out["Neto_A_BASE"] = out["Neto_A"]
-                    out["Neto_A_PPT"]  = 0.0
-
-                out["DIF_NETO"] = out["Neto_A_PPT"] - out["Neto_A_BASE"]
-                return out.drop(columns=["Neto_A"], errors="ignore")
-
-            out_final = pd.concat([
-                prep(nuevos, "NUEVO"),
-                df_mods,
-                prep(eliminados, "ELIMINADO")
-            ], ignore_index=True)
-
-            if out_final.empty:
-                st.success("No hay diferencias: todas las combinaciones coinciden.")
+            if nuevos.empty and eliminados.empty:
+                st.success("No hay diferencias: todas las combinaciones coinciden (incluyendo Neto).")
                 return None
 
-            orden = {"NUEVO": 0, "MODIFICADO": 1, "ELIMINADO": 2}
+            # Salida
+            nuevos_out = nuevos[key_full].copy()
+            nuevos_out["TIPO_CAMBIO"] = "NUEVO"
+            nuevos_out["Neto_A_BASE"] = 0.0
+            nuevos_out["Neto_A_PPT"]  = nuevos_out["Neto_A"]
+            nuevos_out["DIF_NETO"]    = nuevos_out["Neto_A_PPT"] - nuevos_out["Neto_A_BASE"]
+
+            elim_out = eliminados[key_full].copy()
+            elim_out["TIPO_CAMBIO"] = "ELIMINADO"
+            elim_out["Neto_A_BASE"] = elim_out["Neto_A"]
+            elim_out["Neto_A_PPT"]  = 0.0
+            elim_out["DIF_NETO"]    = elim_out["Neto_A_PPT"] - elim_out["Neto_A_BASE"]
+
+            out_final = pd.concat([nuevos_out, elim_out], ignore_index=True)
+
+            # Orden
+            orden = {"NUEVO": 0, "ELIMINADO": 1}
             out_final["__ord"] = out_final["TIPO_CAMBIO"].map(orden).fillna(9)
-            out_final = out_final.sort_values(
-                ["__ord", "Mes_A", "Empresa_A", "Proyecto_A", "Cuenta_A"]
-            ).drop(columns="__ord")
+            out_final = out_final.sort_values(["__ord", "Mes_A", "Empresa_A", "Proyecto_A", "Cuenta_A"]).drop(columns="__ord")
 
             st.write(
                 f"Registros con cambios: **{len(out_final)}** | "
                 f"NUEVOS: **{sum(out_final.TIPO_CAMBIO=='NUEVO')}** | "
-                f"MODIFICADOS: **{sum(out_final.TIPO_CAMBIO=='MODIFICADO')}** | "
                 f"ELIMINADOS: **{sum(out_final.TIPO_CAMBIO=='ELIMINADO')}**"
             )
 
+            # (opcional) ya no necesitas mostrar Neto_A original porque tienes base/ppt
+            out_show = out_final.drop(columns=["Neto_A"], errors="ignore")
+
             st.dataframe(
-                out_final.style.format({
+                out_show.style.format({
                     "Neto_A_BASE": "${:,.2f}",
                     "Neto_A_PPT": "${:,.2f}",
                     "DIF_NETO": "${:,.2f}",
@@ -2752,7 +2701,7 @@ else:
                 height=520
             )
 
-            return out_final
+            return out_show
 
         tabla_diferencias(df_ppt, df_base)
 
@@ -3001,6 +2950,7 @@ else:
                 st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
             else:
                 st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
