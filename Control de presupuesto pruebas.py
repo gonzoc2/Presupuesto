@@ -2598,34 +2598,24 @@ else:
         st.subheader("Cambios base de datos (df_base vs df_ppt)")
 
         def tabla_diferencias(df_ppt: pd.DataFrame, df_base: pd.DataFrame):
-            # ---------------- Validaciones ----------------
             if df_base is None or df_base.empty:
                 st.warning("df_base está vacío o no existe.")
                 return None
-
             if df_ppt is None or df_ppt.empty:
                 st.warning("df_ppt está vacío o no existe.")
                 return None
 
-            # ---------------- Config ----------------
-            # ✅ Llave lógica para identificar la "misma" línea
             key_cols = ["Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A"]
-
-            # columnas que quieres visualizar en cambios
             cols_show = [
                 "Mes_A", "Empresa_A", "CeCo_A", "Proyecto_A", "Cuenta_A",
-                "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A",
+                "Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A", "Usuario_A",
                 "Neto_A_BASE", "Neto_A_PPT", "DIF_NETO"
             ]
+            compare_cols = ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A", "Usuario_A"]
 
-            # columnas a comparar (además de Neto_A)
-            compare_cols = ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A"]
-
-            # ---------------- Normalización ----------------
             base = df_base.copy()
             ppt  = df_ppt.copy()
 
-            # Asegurar columnas mínimas
             required = set(key_cols + compare_cols + ["Neto_A"])
             faltan_base = required - set(base.columns)
             faltan_ppt  = required - set(ppt.columns)
@@ -2637,13 +2627,11 @@ else:
                 st.error(f"df_ppt no contiene columnas requeridas: {sorted(list(faltan_ppt))}")
                 return None
 
-            # Normalizar strings de llaves y campos comparables
             for df in (base, ppt):
                 for c in key_cols + compare_cols:
                     df[c] = df[c].astype(str).str.strip()
                 df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
 
-            # ---------------- Merge para detectar diferencias ----------------
             cmp = base.merge(
                 ppt,
                 on=key_cols,
@@ -2652,14 +2640,12 @@ else:
                 indicator=True
             )
 
-            # ---------------- Clasificación del cambio ----------------
             def tipo_cambio(row):
                 if row["_merge"] == "left_only":
                     return "ELIMINADO"
                 if row["_merge"] == "right_only":
                     return "NUEVO"
 
-                # Ambos existen: revisar si cambió Neto_A o algún campo
                 if float(row.get("Neto_A_BASE", 0) or 0) != float(row.get("Neto_A_PPT", 0) or 0):
                     return "MODIFICADO"
 
@@ -2668,23 +2654,19 @@ else:
                     b = str(row.get(f"{c}_PPT", "") or "").strip()
                     if a != b:
                         return "MODIFICADO"
-
                 return "SIN CAMBIO"
 
             cmp["TIPO_CAMBIO"] = cmp.apply(tipo_cambio, axis=1)
-
             cambios = cmp[cmp["TIPO_CAMBIO"] != "SIN CAMBIO"].copy()
 
             if cambios.empty:
                 st.success("No hay modificaciones entre df_base y df_ppt.")
                 return None
 
-            # ---------------- DIF NETO ----------------
             cambios["Neto_A_BASE"] = pd.to_numeric(cambios.get("Neto_A_BASE", 0), errors="coerce").fillna(0.0)
             cambios["Neto_A_PPT"]  = pd.to_numeric(cambios.get("Neto_A_PPT", 0), errors="coerce").fillna(0.0)
             cambios["DIF_NETO"] = cambios["Neto_A_PPT"] - cambios["Neto_A_BASE"]
 
-            # Para columnas comparables, si viene de un solo lado, rellenar con la disponible
             for c in compare_cols:
                 base_col = f"{c}_BASE"
                 ppt_col  = f"{c}_PPT"
@@ -2693,33 +2675,23 @@ else:
                 if ppt_col not in cambios.columns:
                     cambios[ppt_col] = ""
 
-            # "columna final" (la más reciente preferida PPT, si no existe toma BASE)
-            cambios["Clasificacion_A"] = cambios["Clasificacion_A_PPT"].replace("nan", "").fillna("")
-            cambios.loc[cambios["Clasificacion_A"].eq(""), "Clasificacion_A"] = cambios["Clasificacion_A_BASE"]
+            # columna final preferida PPT
+            for c in ["Clasificacion_A", "Cuenta_Nombre_A", "Categoria_A", "Usuario_A"]:
+                cambios[c] = cambios.get(f"{c}_PPT", "").astype(str).replace("nan", "").fillna("")
+                mask = cambios[c].eq("")
+                cambios.loc[mask, c] = cambios.get(f"{c}_BASE", "").astype(str).replace("nan", "").fillna("")
 
-            cambios["Cuenta_Nombre_A"] = cambios["Cuenta_Nombre_A_PPT"].replace("nan", "").fillna("")
-            cambios.loc[cambios["Cuenta_Nombre_A"].eq(""), "Cuenta_Nombre_A"] = cambios["Cuenta_Nombre_A_BASE"]
-
-            cambios["Categoria_A"] = cambios["Categoria_A_PPT"].replace("nan", "").fillna("")
-            cambios.loc[cambios["Categoria_A"].eq(""), "Categoria_A"] = cambios["Categoria_A_BASE"]
-
-            # ---------------- Orden y salida ----------------
-            # Poner primero el tipo de cambio
             out = cambios.copy()
-
-            # Asegurar que existan columnas para visualizar
             for c in cols_show:
                 if c not in out.columns:
                     out[c] = ""
 
             out_final = out[["TIPO_CAMBIO"] + cols_show].copy()
 
-            # Ordenar: NUEVO y MODIFICADO arriba (opcional)
             orden_tipo = {"NUEVO": 0, "MODIFICADO": 1, "ELIMINADO": 2}
             out_final["__ord"] = out_final["TIPO_CAMBIO"].map(orden_tipo).fillna(9).astype(int)
             out_final = out_final.sort_values(["__ord", "Mes_A", "Proyecto_A", "Cuenta_A"]).drop(columns="__ord")
 
-            # ---------------- Mostrar en Streamlit ----------------
             st.write(
                 f"Registros con cambios: **{len(out_final)}** | "
                 f"NUEVOS: **{sum(out_final['TIPO_CAMBIO']=='NUEVO')}** | "
@@ -2737,18 +2709,8 @@ else:
                 height=520
             )
 
-            # Si también quieres un st.write “crudo”
-            # st.write(out_final)
-
             return out_final
-
-        # ---- USO ----
-        # Asegúrate de tener df_base definido (o guardado en session_state)
-        # Ejemplo:
-        # df_base = st.session_state.get("df_ppt_base")
-        # df_ppt  = df_ppt
-
-        df_base = st.session_state.get("df_ppt_base")  # cambia si tu variable se llama distinto
+        # 2) COMPARA
         tabla_diferencias(df_ppt, df_base)
 
             
@@ -2788,7 +2750,7 @@ else:
             out = (
                 base[(base["Mes_A"].isin(meses)) & (base["Categoria_A"] == "INGRESO")]
                 .groupby("Mes_A", as_index=False)["Neto_A"].sum()
-                .rename(columns={"Neto_A": "ING"})
+                .rename(columns={"Neto_A": "INGRESO"})
             )
             out = _ordenar_meses(out, "Mes_A")
             return out
@@ -2837,9 +2799,13 @@ else:
             )
             return fig
 
-        ing_ppt_mes = _ingresos_total_por_mes(df_ppt, meses_sel).rename(columns={"ING": "PPT"})
-        ing_real_mes = _ingresos_total_por_mes(df_real, meses_sel).rename(columns={"ING": "REAL"})
-        fig1 = _linea_ppt_real(ing_ppt_mes, ing_real_mes, "Ingresos")
+        ing_ppt_mes = _ingresos_total_por_mes(df_ppt, meses_sel).rename(columns={"INGRESO": "PPT"})
+        ing_real_mes = _ingresos_total_por_mes(df_real, meses_sel).rename(columns={"INGRESO": "REAL"})
+        fig1 = _linea_ppt_real(ing_ppt_mes, ing_real_mes, "INGRESO")
+        if fig1 is None:
+            st.info("No hay datos de Ingresos para los meses seleccionados.")
+        else:
+            st.plotly_chart(fig1, use_container_width=True)
 
         coss_ppt_mes = _COSS_total(df_ppt, meses_sel).rename(columns={"COSS": "PPT"})
         coss_real_mes = _COSS_total(df_real, meses_sel).rename(columns={"COSS": "REAL"})
@@ -2848,8 +2814,6 @@ else:
         gadmn_ppt_mes = _GADMN_total(df_ppt, meses_sel).rename(columns={"G.ADMN": "PPT"})
         gadmn_real_mes = _GADMN_total(df_real, meses_sel).rename(columns={"G.ADMN": "REAL"})
         fig4 = _linea_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN")
-
-        # ---------------- GRAF 2: % UTILIDAD OPERATIVA (BARRAS) ----------------
         nombres = df_visibles["nombre"].tolist()
         codigos = df_visibles["proyectos"].tolist()
 
@@ -2906,6 +2870,7 @@ else:
             st.plotly_chart(fig4, use_container_width=True)
         with c4:
             st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
