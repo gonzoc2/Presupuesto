@@ -429,7 +429,6 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
         (df_agrid["Proyecto_A"].isin(proyecto_codigo)) &
         (df_agrid[clasificacion] == categoria)
     ].copy()
-
     df_ppt = df_ppt.groupby(group_cols, as_index=False).agg(PPT=("Neto_A", "sum"))
 
     # -------- REAL (YTD) --------
@@ -438,31 +437,35 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
         (df_ppt_actual["Proyecto_A"].isin(proyecto_codigo)) &
         (df_ppt_actual[clasificacion] == categoria)
     ].copy()
-
     df_ytd = df_ytd.groupby(group_cols, as_index=False).agg(YTD=("Neto_A", "sum"))
 
-    # -------- Merge + Variación --------
-    df_out = pd.merge(df_ppt, df_ytd, on=group_cols, how="outer").fillna(0)
+    # -------- Merge --------
+    df_det = pd.merge(df_ppt, df_ytd, on=group_cols, how="outer").fillna(0.0)
 
-    df_out["Variación %"] = np.where(
-        df_out["PPT"] != 0,
-        ((df_out["YTD"] / df_out["PPT"]) - 1) * 100,
+    df_det["Variación %"] = np.where(
+        df_det["PPT"] != 0,
+        ((df_det["YTD"] / df_det["PPT"]) - 1) * 100,
         0.0
     )
 
-    for c in ["YTD", "PPT", "Variación %"]:
+    # ✅ TOTAL por categoría (fila del grupo)
+    df_tot = df_det.groupby(group_col, as_index=False)[["PPT", "YTD"]].sum()
+    df_tot["Variación %"] = np.where(
+        df_tot["PPT"] != 0,
+        ((df_tot["YTD"] / df_tot["PPT"]) - 1) * 100,
+        0.0
+    )
+    df_tot[detalle_col] = ""   # <- esto hace que sea la fila “header/total” del grupo
+    df_tot["__is_total"] = 1
+
+    df_det["__is_total"] = 0
+
+    df_out = pd.concat([df_tot, df_det], ignore_index=True)
+
+    for c in ["PPT", "YTD", "Variación %", "__is_total"]:
         df_out[c] = pd.to_numeric(df_out[c], errors="coerce").fillna(0.0)
 
     # ---------------- AgGrid ----------------
-    gb = GridOptionsBuilder.from_dataframe(df_out)
-    gb.configure_default_column(resizable=True, sortable=True, filter=True)
-
-    # Agrupa por Categoria_A (se mostrará como "Group row" arriba)
-    gb.configure_column(group_col, rowGroup=True, hide=True)
-
-    # Columna separada para la cuenta
-    gb.configure_column(detalle_col, header_name="Cuenta_Nombre_A", minWidth=320)
-
     money_fmt = JsCode("""
         function(params){
             if (params.value === null || params.value === undefined) return '';
@@ -477,55 +480,80 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
         }
     """)
 
-    # ✅ En group row: usa aggData.PPT y aggData.YTD
-    var_value_getter = JsCode("""
+    # ✅ Sort dentro de cada grupo: TOTAL primero
+    post_sort = JsCode("""
         function(params){
-            if (params.node && params.node.group) {
-                var ppt = (params.node.aggData && params.node.aggData.PPT) ? params.node.aggData.PPT : 0;
-                var ytd = (params.node.aggData && params.node.aggData.YTD) ? params.node.aggData.YTD : 0;
-                if (!ppt) return 0;
-                return ((ytd / ppt) - 1) * 100;
-            }
-            return params.data ? params.data["Variación %"] : 0;
+            var nodes = params.nodes;
+            nodes.sort(function(a,b){
+                var at = (a.data && a.data.__is_total) ? 0 : 1;
+                var bt = (b.data && b.data.__is_total) ? 0 : 1;
+                if (at !== bt) return at - bt;
+
+                // Luego ordenar por Cuenta_Nombre_A
+                var an = (a.data && a.data.Cuenta_Nombre_A) ? a.data.Cuenta_Nombre_A : '';
+                var bn = (b.data && b.data.Cuenta_Nombre_A) ? b.data.Cuenta_Nombre_A : '';
+                return an.localeCompare(bn);
+            });
         }
     """)
 
-    gb.configure_column("PPT", type=["numericColumn"], aggFunc="sum",
-                        valueFormatter=money_fmt, cellStyle={"textAlign": "right"})
-    gb.configure_column("YTD", type=["numericColumn"], aggFunc="sum",
-                        valueFormatter=money_fmt, cellStyle={"textAlign": "right"})
+    gb = GridOptionsBuilder.from_dataframe(df_out)
+    gb.configure_default_column(resizable=True, sortable=True, filter=True)
 
-    gb.configure_column(
-        "Variación %",
-        header_name="Variación %",
-        type=["numericColumn"],
-        aggFunc="last",                 # en group row no importa: se recalcula con valueGetter
-        valueGetter=var_value_getter,
-        valueFormatter=pct_fmt,
-        cellStyle={"textAlign": "right"}
-    )
+    # Agrupar por Categoria_A (pero ocultarla como columna)
+    gb.configure_column(group_col, rowGroup=True, hide=True)
+
+    # Oculta helper
+    gb.configure_column("__is_total", hide=True)
 
     grid_options = gb.build()
-    grid_options.update({
-        # ✅ Esto hace que el grupo sea la fila de arriba (como tu 1ª imagen)
-        "groupDisplayType": "groupRows",
-        "groupDefaultExpanded": 1,
 
-        # ✅ NO footer abajo
-        "groupIncludeFooter": False,
-        "groupIncludeTotalFooter": False,
+    # ✅ CLAVE: columna Group separada (como tu 1ª imagen)
+    grid_options["groupSuppressAutoColumn"] = True
+    grid_options["groupDisplayType"] = "singleColumn"
+    grid_options["groupDefaultExpanded"] = 1
+    grid_options["postSortRows"] = post_sort
 
-        # ✅ Columna Group separada y primero
-        "autoGroupColumnDef": {
+    # ✅ Columnas EXACTAS que quieres ver
+    grid_options["columnDefs"] = [
+        {
             "headerName": "Group",
+            "showRowGroup": group_col,
+            "cellRenderer": "agGroupCellRenderer",
+            "cellRendererParams": {"suppressCount": False},
             "minWidth": 240,
             "pinned": "left",
-            "cellRendererParams": {"suppressCount": False}
         },
-
-        # deja visible Cuenta_Nombre_A como columna aparte
-        "suppressRowGroupHidesColumns": True,
-    })
+        {
+            "field": detalle_col,
+            "headerName": "Cuenta_Nombre_A",
+            "minWidth": 320,
+        },
+        {
+            "field": "PPT",
+            "headerName": "PPT",
+            "type": ["numericColumn"],
+            "aggFunc": "sum",
+            "valueFormatter": money_fmt,
+            "cellStyle": {"textAlign": "right"},
+        },
+        {
+            "field": "YTD",
+            "headerName": "YTD",
+            "type": ["numericColumn"],
+            "aggFunc": "sum",
+            "valueFormatter": money_fmt,
+            "cellStyle": {"textAlign": "right"},
+        },
+        {
+            "field": "Variación %",
+            "headerName": "Variación %",
+            "type": ["numericColumn"],
+            "aggFunc": "last",
+            "valueFormatter": pct_fmt,
+            "cellStyle": {"textAlign": "right"},
+        },
+    ]
 
     AgGrid(
         df_out,
@@ -3177,6 +3205,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True)
+
 
 
 
