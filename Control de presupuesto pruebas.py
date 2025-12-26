@@ -3264,13 +3264,24 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
     elif selected == "Resumen":
+
         def fmt_mxn(x):
-            return f"${x:,.0f}"
+            try:
+                return f"${float(x):,.0f}"
+            except:
+                return "$0"
 
         def fmt_pct(x):
-            return f"{x*100:.1f}%"
+            try:
+                return f"{x*100:.1f}%"
+            except:
+                return "0.0%"
+
         def resumen_empresa(df_ppt, df_real):
-            st.title("Resumen Presupuestal – Empresa")
+
+            st.title("Resumen Presupuestal")
+
+            # ---------------- Filtros ----------------
             c1, c2, c3 = st.columns([2, 3, 2])
             with c1:
                 modo = st.radio("Periodo", ["Mensual", "YTD"], horizontal=True, key="modo_resumen")
@@ -3279,52 +3290,75 @@ else:
                 meses_ppt = df_ppt["Mes_A"].astype(str).str.strip().unique().tolist()
                 meses_real = df_real["Mes_A"].astype(str).str.strip().unique().tolist()
                 meses_disponibles = [m for m in meses_ordenados if (m in meses_ppt) or (m in meses_real)]
-
                 default = meses_disponibles[-1:] if meses_disponibles else []
-                meses_sel = st.multiselect("Mes(es)", meses_disponibles, default=default, key="meses_empresa")
+                meses_sel = st.multiselect(
+                    "Mes(es)",
+                    meses_disponibles,
+                    default=default,
+                    key="meses_empresa"
+                )
             with c3:
                 vista = st.selectbox("Vista", ["Real vs PPT"], index=0, key="vista_empresa")
 
             if not meses_sel:
                 st.warning("Selecciona por lo menos un mes.")
-                return
+                return None
 
-            def total_categoria(df, cat):
-                tmp = df.copy()
-                tmp["Mes_A"] = tmp["Mes_A"].astype(str).str.strip()
-                tmp["Categoria_A"] = tmp["Categoria_A"].astype(str).str.strip()
-                tmp["Neto_A"] = pd.to_numeric(tmp["Neto_A"], errors="coerce").fillna(0)
-                return float(tmp[(tmp["Mes_A"].isin(meses_sel)) & (tmp["Categoria_A"] == cat)]["Neto_A"].sum())
+            # ---------------- Parámetros empresa ----------------
+            pro = "ESGARI"
+            codigo_pro = []                 # no aplica para ESGARI
+            lista_proyectos = list_pro      # variable global existente
 
-            ing_ppt = total_categoria(df_ppt, "INGRESO")
-            ing_real = total_categoria(df_real, "INGRESO")
-            def total_clasif(df, clasif):
-                tmp = df.copy()
-                tmp["Mes_A"] = tmp["Mes_A"].astype(str).str.strip()
-                tmp["Clasificacion_A"] = tmp["Clasificacion_A"].astype(str).str.strip()
-                tmp["Neto_A"] = pd.to_numeric(tmp["Neto_A"], errors="coerce").fillna(0)
-                return float(tmp[(tmp["Mes_A"].isin(meses_sel)) & (tmp["Clasificacion_A"] == clasif)]["Neto_A"].sum())
+            # ---------------- INGRESOS ----------------
+            ing_ppt  = float(ingreso(df_ppt,  meses_sel, codigo_pro, pro) or 0.0)
+            ing_real = float(ingreso(df_real, meses_sel, codigo_pro, pro) or 0.0)
 
-            coss_ppt = total_clasif(df_ppt, "COSS")
-            coss_real = total_clasif(df_real, "COSS")
-            gadm_ppt = total_clasif(df_ppt, "G.ADMN")
-            gadm_real = total_clasif(df_real, "G.ADMN")
+            # ---------------- COSS BASE ----------------
+            coss_ppt_base, _  = coss(df_ppt,  meses_sel, codigo_pro, pro, lista_proyectos)
+            coss_real_base, _ = coss(df_real, meses_sel, codigo_pro, pro, lista_proyectos)
+            coss_ppt_base  = float(coss_ppt_base or 0.0)
+            coss_real_base = float(coss_real_base or 0.0)
 
-            uo_ppt = ing_ppt - coss_ppt - gadm_ppt
-            uo_real = ing_real - coss_real - gadm_real
+            # ---------------- PATIO ----------------
+            patio_ppt  = float(patio(df_ppt,  meses_sel, codigo_pro, pro) or 0.0)
+            patio_real = float(patio(df_real, meses_sel, codigo_pro, pro) or 0.0)
+
+            # ---------------- G.ADMN ----------------
+            gadm_ppt, _  = gadmn(df_ppt,  meses_sel, codigo_pro, pro, lista_proyectos)
+            gadm_real, _ = gadmn(df_real, meses_sel, codigo_pro, pro, lista_proyectos)
+            gadm_ppt  = float(gadm_ppt or 0.0)
+            gadm_real = float(gadm_real or 0.0)
+
+            # ---------------- KPI DEFINITIVOS ----------------
+            # COSS TOTAL = COSS + PATIO + G.ADMN  (SIN OH)
+            coss_ppt  = coss_ppt_base  + patio_ppt  + gadm_ppt
+            coss_real = coss_real_base + patio_real + gadm_real
+
+            # Utilidad Operativa
+            uo_ppt  = ing_ppt  - coss_ppt
+            uo_real = ing_real - coss_real
+
+            # ---------------- KPIs ----------------
             k1, k2, k3, k4, k5 = st.columns(5)
 
             def delta_pct(real, ppt):
-                if ppt == 0: return "0.0%"
+                if ppt == 0:
+                    return "0.0%"
                 return f"{((real/ppt)-1)*100:+.1f}%"
 
             k1.metric("Ingresos", fmt_mxn(ing_real), delta_pct(ing_real, ing_ppt))
-            k2.metric("COSS", fmt_mxn(coss_real), delta_pct(coss_real, coss_ppt))
-            k3.metric("G. Adm", fmt_mxn(gadm_real), delta_pct(gadm_real, gadm_ppt))
+            k2.metric("COSS Total", fmt_mxn(coss_real), delta_pct(coss_real, coss_ppt))
+            k3.metric("PATIO", fmt_mxn(patio_real), delta_pct(patio_real, patio_ppt))
             k4.metric("Utilidad Operativa", fmt_mxn(uo_real), delta_pct(uo_real, uo_ppt))
-            k5.metric("% UO", fmt_pct(uo_real/ing_real if ing_real else 0), f"{((uo_real/ing_real if ing_real else 0)-(uo_ppt/ing_ppt if ing_ppt else 0))*100:+.1f} pp")
+            k5.metric(
+                "% UO",
+                fmt_pct(uo_real / ing_real if ing_real else 0),
+                f"{((uo_real/ing_real if ing_real else 0)-(uo_ppt/ing_ppt if ing_ppt else 0))*100:+.1f} pp"
+            )
 
             st.divider()
+
+            # ---------------- GRÁFICOS ----------------
             g1, g2 = st.columns([1.2, 1])
 
             with g1:
@@ -3332,45 +3366,58 @@ else:
                 fig.add_trace(go.Bar(name="PPT", x=meses_sel, y=[ing_ppt]*len(meses_sel)))
                 fig.add_trace(go.Bar(name="REAL", x=meses_sel, y=[ing_real]*len(meses_sel)))
                 fig.update_layout(barmode="group", height=360, title="Ingresos (PPT vs Real)")
-                st.plotly_chart(fig, use_container_width=True, key="fig_ing_empresa")
+                st.plotly_chart(fig, use_container_width=True)
 
             with g2:
                 fig2 = go.Figure()
-                fig2.add_trace(go.Bar(x=["COSS", "G. Adm"], y=[(coss_real-coss_ppt), (gadm_real-gadm_ppt)]))
-                fig2.update_layout(height=360, title="Drivers de variación vs PPT (MXN)")
-                st.plotly_chart(fig2, use_container_width=True, key="fig_drivers_empresa")
+                fig2.add_trace(go.Bar(
+                    x=["COSS Total"],
+                    y=[coss_real - coss_ppt]
+                ))
+                fig2.update_layout(height=360, title="Variación COSS")
+                st.plotly_chart(fig2, use_container_width=True)
 
             st.divider()
+
+            # ---------------- TABLA RESUMEN ----------------
             df_res = pd.DataFrame([
                 ["INGRESO", ing_ppt, ing_real],
-                ["COSS", coss_ppt, coss_real],
-                ["G.ADMN", gadm_ppt, gadm_real],
-                ["U. OPERATIVA", uo_ppt, uo_real],
+                ["COSS TOTAL", coss_ppt, coss_real],
+                ["UTILIDAD OPERATIVA", uo_ppt, uo_real],
             ], columns=["Rubro", "PPT", "REAL"])
 
             df_res["DIF"] = df_res["REAL"] - df_res["PPT"]
-            df_res["DIF %"] = np.where(df_res["PPT"] != 0, (df_res["REAL"]/df_res["PPT"] - 1) * 100, 0)
-
-            df_res["% sobre Ingreso (REAL)"] = np.where(ing_real != 0, (df_res["REAL"]/ing_real)*100, 0)
+            df_res["DIF %"] = np.where(
+                df_res["PPT"] != 0,
+                (df_res["REAL"]/df_res["PPT"] - 1) * 100,
+                0
+            )
+            df_res["% sobre Ingreso (REAL)"] = np.where(
+                ing_real != 0,
+                (df_res["REAL"]/ing_real)*100,
+                0
+            )
 
             st.subheader("Resumen Ejecutivo (Empresa)")
             st.dataframe(
                 df_res.style.format({
-                    "PPT": "${:,.0f}", "REAL": "${:,.0f}", "DIF": "${:,.0f}",
-                    "DIF %": "{:.2f}%", "% sobre Ingreso (REAL)": "{:.2f}%"
+                    "PPT": "${:,.0f}",
+                    "REAL": "${:,.0f}",
+                    "DIF": "${:,.0f}",
+                    "DIF %": "{:.2f}%",
+                    "% sobre Ingreso (REAL)": "{:.2f}%"
                 }),
                 use_container_width=True
             )
 
             with st.expander("Detalle COSS", expanded=False):
-                st.info("Aquí va tu AgGrid agrupado por Categoría → Cuenta (cerrado por default).")
+                st.info("Aquí va tu AgGrid corporativo, cerrado por default.")
 
-            with st.expander("Detalle G. Admn", expanded=False):
-                st.info("Aquí va tu AgGrid agrupado por Categoría → Cuenta (cerrado por default).")
             return df_res
 
-        # 🔥 ESTA LÍNEA ES LA QUE FALTABA
+        # 🔥 EJECUCIÓN
         resumen_empresa(df_ppt, df_real)
+
 
 
 
