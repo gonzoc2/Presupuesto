@@ -759,21 +759,16 @@ def seccion_analisis_por_clasificacion(
         df_cta["DIF NOM"] = df_cta["REAL NOM"] - df_cta["PPT NOM"]
         df_cta["DIF %"] = np.where(df_cta["PPT NOM"] != 0, ((df_cta["REAL NOM"] / df_cta["PPT NOM"]) - 1) * 100, 0.0)
         df_cta["%Ingresos"] = np.where(ingreso_real_sel != 0, (df_cta["DIF NOM"] / ingreso_real_sel) * 100, 0.0)
-
-        # ---------------- OUTPUT AGGRID (Categoría + Cuenta) ----------------
-        df_cat_out = df_cat[["Categoria_A", "PPT NOM", "REAL NOM", "DIF NOM", "DIF %", "PPT %", "REAL %", "%Ingresos"]].copy()
-        df_cat_out["Cuenta_Nombre_A"] = ""
-        df_cat_out = df_cat_out[["Categoria_A", "Cuenta_Nombre_A", "PPT NOM", "REAL NOM", "DIF NOM", "DIF %", "PPT %", "REAL %", "%Ingresos"]]
-
-        df_cta_out = df_cta[["Categoria_A", "Cuenta_Nombre_A", "PPT NOM", "REAL NOM", "DIF NOM", "DIF %", "PPT %", "REAL %", "%Ingresos"]].copy()
-
-        df_out = pd.concat([df_cat_out, df_cta_out], ignore_index=True)
-
-        # ---------------- AGGRID ----------------
+        df_out = df_cta[[
+            "Categoria_A", "Cuenta_Nombre_A",
+            "PPT NOM", "REAL NOM", "DIF NOM", "DIF %",
+            "PPT %", "REAL %", "%Ingresos"
+        ]].copy()
         gb = GridOptionsBuilder.from_dataframe(df_out)
         gb.configure_default_column(resizable=True, sortable=True, filter=True)
-        gb.configure_column("Categoria_A", rowGroup=True, hide=True)
-        gb.configure_column("Cuenta_Nombre_A", header_name="Cuenta", pinned="left")
+
+        group_col = "Categoria_A"
+        detalle_col = "Cuenta_Nombre_A"
 
         currency_formatter = JsCode("""
             function(params) {
@@ -793,30 +788,49 @@ def seccion_analisis_por_clasificacion(
             function(params){
                 if (params.value === null || params.value === undefined) return {};
                 if (params.value > 10){
-                    return { 'backgroundColor': '#FF0000', 'color': 'white', 'fontWeight': '800' };
+                    return { 'backgroundColor': '#FF0000', 'color': 'white', 'fontWeight': '800', 'textAlign':'right' };
                 } else {
-                    return { 'backgroundColor': '#92D050', 'color': 'black', 'fontWeight': '800' };
+                    return { 'backgroundColor': '#92D050', 'color': 'black', 'fontWeight': '800', 'textAlign':'right' };
                 }
             }
         """)
 
-        for col in ["PPT NOM", "REAL NOM", "DIF NOM"]:
-            gb.configure_column(col, type=["numericColumn"], aggFunc="sum",
-                                valueFormatter=currency_formatter, cellStyle={"textAlign": "right"})
-
-        gb.configure_column("DIF %", type=["numericColumn"], aggFunc="last",
-                            valueFormatter=pct_formatter, cellStyle=dif_pct_color)
-
-        for col in ["PPT %", "REAL %", "%Ingresos"]:
-            gb.configure_column(col, type=["numericColumn"], aggFunc="last",
-                                valueFormatter=pct_formatter, cellStyle={"textAlign": "right"})
-
         gridOptions = gb.build()
-        gridOptions.update({
-            "groupDisplayType": "groupRows",
-            "groupDefaultExpanded": 1,
-            "suppressAggFuncInHeader": False
-        })
+        gridOptions["columnDefs"] = [
+            {"field": group_col, "rowGroup": True, "hide": True},
+
+            {"field": detalle_col, "headerName": "Cuenta", "minWidth": 320},
+
+            {"field": "PPT NOM", "headerName": "PPT NOM", "type": ["numericColumn"], "aggFunc": "sum",
+             "valueFormatter": currency_formatter, "cellStyle": {"textAlign": "right"}},
+
+            {"field": "REAL NOM", "headerName": "REAL NOM", "type": ["numericColumn"], "aggFunc": "sum",
+             "valueFormatter": currency_formatter, "cellStyle": {"textAlign": "right"}},
+
+            {"field": "DIF NOM", "headerName": "DIF NOM", "type": ["numericColumn"], "aggFunc": "sum",
+             "valueFormatter": currency_formatter, "cellStyle": {"textAlign": "right"}},
+            {"field": "DIF %", "headerName": "DIF %", "type": ["numericColumn"], "aggFunc": "last",
+             "valueFormatter": pct_formatter, "cellStyle": dif_pct_color},
+
+            {"field": "PPT %", "headerName": "PPT %", "type": ["numericColumn"], "aggFunc": "last",
+             "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
+
+            {"field": "REAL %", "headerName": "REAL %", "type": ["numericColumn"], "aggFunc": "last",
+             "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
+
+            {"field": "%Ingresos", "headerName": "%Ingresos", "type": ["numericColumn"], "aggFunc": "last",
+             "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
+        ]
+
+        gridOptions["groupDisplayType"] = "singleColumn"
+        gridOptions["groupDefaultExpanded"] = 1
+        gridOptions["autoGroupColumnDef"] = {
+            "headerName": "Group",
+            "minWidth": 260,
+            "pinned": "left",
+            "cellRendererParams": {"suppressCount": False},
+        }
+        gridOptions["suppressAggFuncInHeader"] = True
 
         meses_key = "-".join(meses_sel)
         grid_key = f"agrid_mix_{clasificacion_nombre}_{'-'.join(proy)}_{'-'.join(cecos)}_{meses_key}"
@@ -832,6 +846,7 @@ def seccion_analisis_por_clasificacion(
             theme="streamlit",
             key=grid_key
         )
+
 def agrid_ingreso_con_totales(df):
     df = df.copy()
 
@@ -3172,6 +3187,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
