@@ -2209,17 +2209,18 @@ else:
         )
 
     elif selected == "Proyectos":
+
         def tabla_proyectos(df_ppt, df_real, meses_seleccionado, cecos_seleccionados, df_proyectos, proyectos_seleccionados):
             """
-            Salida como la imagen:
-            PROYECTOS | DIF G.ADM | DIF COSS | G.ADM / INGRESOS | COSS / INGRESOS
+            Salida:
+            PROYECTOS | DIF G.ADM | VAR % G.ADM | DIF COSS | VAR % COSS | G.ADM / INGRESOS | COSS / INGRESOS
 
-            Fórmulas:
-            DIF G.ADM   = (G.ADMN PPT - G.ADMN REAL)
-            DIF COSS    = (COSS PPT - COSS REAL)
-            G.ADM/ING   = ((G.ADMN PPT - G.ADMN REAL) / INGRESOS TOTALES) * 100
-            COSS/ING    = ((COSS PPT - COSS REAL) / INGRESOS TOTALES) * 100
-            * INGRESOS TOTALES se calcula por proyecto con REAL (mismos filtros).
+            DIF G.ADM      = REAL_GADM - PPT_GADM
+            VAR % G.ADM    = (REAL_GADM / PPT_GADM - 1) * 100
+            DIF COSS       = REAL_COSS - PPT_COSS
+            VAR % COSS     = (REAL_COSS / PPT_COSS - 1) * 100
+            G.ADM/ING      = (DIF G.ADM / ING_REAL) * 100
+            COSS/ING       = (DIF COSS / ING_REAL) * 100
             """
             if not meses_seleccionado:
                 st.error("Favor de seleccionar por lo menos un mes")
@@ -2244,6 +2245,8 @@ else:
                 df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
                 df["Clasificacion_A"] = df["Clasificacion_A"].astype(str).str.strip()
                 df["Categoria_A"] = df["Categoria_A"].astype(str).str.strip()
+                df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
+
             base_ppt = df_ppt[
                 (df_ppt["Mes_A"].isin(meses_sel)) &
                 (df_ppt["CeCo_A"].isin(cecos_sel)) &
@@ -2268,22 +2271,37 @@ else:
                     .groupby("Proyecto_A", as_index=False)["Neto_A"].sum()
                 )
 
-            ppt_gadmn = _sum_clas(base_ppt, "G.ADMN").rename(columns={"Neto_A": "PPT_GADM"})
+            ppt_gadmn  = _sum_clas(base_ppt, "G.ADMN").rename(columns={"Neto_A": "PPT_GADM"})
             real_gadmn = _sum_clas(base_real, "G.ADMN").rename(columns={"Neto_A": "REAL_GADM"})
+            ppt_coss   = _sum_clas(base_ppt, "COSS").rename(columns={"Neto_A": "PPT_COSS"})
+            real_coss  = _sum_clas(base_real, "COSS").rename(columns={"Neto_A": "REAL_COSS"})
 
-            ppt_coss = _sum_clas(base_ppt, "COSS").rename(columns={"Neto_A": "PPT_COSS"})
-            real_coss = _sum_clas(base_real, "COSS").rename(columns={"Neto_A": "REAL_COSS"})
             tabla = (
                 ing_real
                 .merge(ppt_gadmn, on="Proyecto_A", how="outer")
                 .merge(real_gadmn, on="Proyecto_A", how="outer")
                 .merge(ppt_coss, on="Proyecto_A", how="outer")
                 .merge(real_coss, on="Proyecto_A", how="outer")
-                .fillna(0)
+                .fillna(0.0)
             )
+
+            # DIFs
             tabla["DIF G.ADM"] = tabla["REAL_GADM"] - tabla["PPT_GADM"]
             tabla["DIF COSS"]  = tabla["REAL_COSS"] - tabla["PPT_COSS"]
 
+            # ✅ Variación %
+            tabla["VAR % G.ADM"] = np.where(
+                tabla["PPT_GADM"] != 0,
+                (tabla["REAL_GADM"] / tabla["PPT_GADM"] - 1) * 100,
+                0.0
+            )
+            tabla["VAR % COSS"] = np.where(
+                tabla["PPT_COSS"] != 0,
+                (tabla["REAL_COSS"] / tabla["PPT_COSS"] - 1) * 100,
+                0.0
+            )
+
+            # Impacto vs ingresos (como ya lo tenías)
             tabla["G.ADM / INGRESOS"] = np.where(
                 tabla["ING_REAL"] != 0,
                 (tabla["DIF G.ADM"] / tabla["ING_REAL"]) * 100,
@@ -2295,27 +2313,44 @@ else:
                 0.0
             )
 
+            # Nombre proyecto
             df_map = df_proyectos.copy()
             df_map["proyectos"] = df_map["proyectos"].astype(str).str.strip()
             df_map["nombre"] = df_map["nombre"].astype(str).str.strip()
-
             mapa = dict(zip(df_map["proyectos"], df_map["nombre"]))
             tabla["PROYECTOS"] = tabla["Proyecto_A"].map(mapa).fillna(tabla["Proyecto_A"])
 
-            out = tabla[["PROYECTOS", "DIF G.ADM", "DIF COSS", "G.ADM / INGRESOS", "COSS / INGRESOS"]].copy()
+            out = tabla[[
+                "PROYECTOS",
+                "DIF G.ADM", "VAR % G.ADM",
+                "DIF COSS",  "VAR % COSS",
+                "G.ADM / INGRESOS",
+                "COSS / INGRESOS"
+            ]].copy()
+
+            # Totales
             total_ing = float(tabla["ING_REAL"].sum())
+            total_ppt_g = float(tabla["PPT_GADM"].sum())
+            total_real_g = float(tabla["REAL_GADM"].sum())
+            total_ppt_c = float(tabla["PPT_COSS"].sum())
+            total_real_c = float(tabla["REAL_COSS"].sum())
+
             total_dif_g = float(tabla["DIF G.ADM"].sum())
             total_dif_c = float(tabla["DIF COSS"].sum())
 
             total_row = pd.DataFrame([{
                 "PROYECTOS": "TOTAL",
                 "DIF G.ADM": total_dif_g,
+                "VAR % G.ADM": ((total_real_g / total_ppt_g) - 1) * 100 if total_ppt_g != 0 else 0.0,
                 "DIF COSS": total_dif_c,
+                "VAR % COSS": ((total_real_c / total_ppt_c) - 1) * 100 if total_ppt_c != 0 else 0.0,
                 "G.ADM / INGRESOS": (total_dif_g / total_ing * 100) if total_ing != 0 else 0.0,
                 "COSS / INGRESOS": (total_dif_c / total_ing * 100) if total_ing != 0 else 0.0,
             }])
 
             out = pd.concat([out, total_row], ignore_index=True)
+
+            # ---------------- Estilo ----------------
             BLUE = "#0B2A4A"
             GRIS_1 = "#FFFFFF"
             GRIS_2 = "#F2F2F2"
@@ -2343,20 +2378,28 @@ else:
                     .format({
                         "DIF G.ADM": "${:,.2f}",
                         "DIF COSS": "${:,.2f}",
-                        "G.ADM / INGRESOS": "{:,.0f}%",
-                        "COSS / INGRESOS": "{:,.0f}%"
+                        "VAR % G.ADM": "{:,.2f}%",
+                        "VAR % COSS": "{:,.2f}%",
+                        "G.ADM / INGRESOS": "{:,.2f}%",
+                        "COSS / INGRESOS": "{:,.2f}%"
                     })
                     .set_properties(subset=["PROYECTOS"], **{"text-align": "left", "font-weight": "700"})
-                    .set_properties(subset=["DIF G.ADM", "DIF COSS", "G.ADM / INGRESOS", "COSS / INGRESOS"], **{"text-align": "right"}),
+                    .set_properties(subset=[
+                        "DIF G.ADM", "VAR % G.ADM",
+                        "DIF COSS", "VAR % COSS",
+                        "G.ADM / INGRESOS", "COSS / INGRESOS"
+                    ], **{"text-align": "right"}),
                 use_container_width=True,
                 height=420
             )
 
             return out
+
         col1, col2, col3 = st.columns(3)
         meses_seleccionado = filtro_meses(col1, df_ppt)
         ceco_codigo, ceco_nombre = filtro_ceco(col2)
         proyecto_codigo, proyecto_nombre = filtro_pro(col3)
+
         df_proyectos = proyectos.copy()
         df_proyectos["proyectos"] = df_proyectos["proyectos"].astype(str).str.strip()
         df_proyectos["nombre"] = df_proyectos["nombre"].astype(str).str.strip()
@@ -3422,6 +3465,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
