@@ -3367,6 +3367,11 @@ else:
 
             with st.expander("Detalle G. Admn", expanded=False):
                 st.info("Aquí va tu AgGrid agrupado por Categoría → Cuenta (cerrado por default).")
+            return df_res
+
+        # 🔥 ESTA LÍNEA ES LA QUE FALTABA
+        resumen_empresa(df_ppt, df_real)
+
 
 
 
