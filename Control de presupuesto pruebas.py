@@ -16,7 +16,7 @@ import re
 
 st.set_page_config(
     page_title="Control de Presupuesto",
-    page_icon="🚛", #buscar un icono
+    page_icon="🚚", #buscar un icono
     layout="wide"   
 )
 
@@ -510,7 +510,7 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
 
     # ✅ UNA sola columna de Group (autoGroup column)
     grid_options["groupDisplayType"] = "singleColumn"
-    grid_options["groupDefaultExpanded"] = 1
+    grid_options["groupDefaultExpanded"] = 0
     grid_options["autoGroupColumnDef"] = {
         "headerName": "Group",
         "minWidth": 260,
@@ -3263,6 +3263,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
