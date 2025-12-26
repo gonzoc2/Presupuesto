@@ -402,77 +402,65 @@ def filtro_ceco(col):
 
 def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_seleccionado, clasificacion, categoria, titulo):
     """
-    df_agrid: tu DF base PPT (presupuesto)  -> columna Neto_A
-    df_ppt_actual: tu DF REAL (actual)     -> columna Neto_A
+    - Group = Categoria_A (como tu imagen)
+    - Columna separada para Cuenta_Nombre_A (NO en la misma columna del group)
+    - Muestra: YTD, PPT, Variación %
     """
-    st.write(titulo)
 
+    st.write(titulo)
     if not meses_seleccionado or not proyecto_codigo:
         st.info("Selecciona por lo menos un mes y un proyecto.")
         return None
 
     df_agrid = df_agrid.copy()
     df_ppt_actual = df_ppt_actual.copy()
-
     for df in (df_agrid, df_ppt_actual):
         df["Proyecto_A"] = df["Proyecto_A"].astype(str).str.strip()
         df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
         df[clasificacion] = df[clasificacion].astype(str).str.strip()
         df["Categoria_A"] = df["Categoria_A"].astype(str).str.strip()
         df["Cuenta_Nombre_A"] = df["Cuenta_Nombre_A"].astype(str).str.strip()
+        df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
 
     proyecto_codigo = [str(x).strip() for x in proyecto_codigo]
     meses_sel = [str(x).strip() for x in meses_seleccionado]
-
-    columnas = ["Cuenta_Nombre_A", "Categoria_A"]
-
-    # -------- PPT --------
+    group_col = "Categoria_A"
+    detalle_col = "Cuenta_Nombre_A"
+    group_cols = [group_col, detalle_col]
     df_ppt = df_agrid[
         (df_agrid["Mes_A"].isin(meses_sel)) &
         (df_agrid["Proyecto_A"].isin(proyecto_codigo)) &
         (df_agrid[clasificacion] == categoria)
     ].copy()
 
-    df_ppt = df_ppt.groupby(columnas, as_index=False).agg({"Neto_A": "sum"})
-    df_ppt.rename(columns={"Neto_A": "PPT"}, inplace=True)
-
-    # -------- REAL (YTD) --------
+    df_ppt = df_ppt.groupby(group_cols, as_index=False).agg(PPT=("Neto_A", "sum"))
     df_ytd = df_ppt_actual[
         (df_ppt_actual["Mes_A"].isin(meses_sel)) &
         (df_ppt_actual["Proyecto_A"].isin(proyecto_codigo)) &
         (df_ppt_actual[clasificacion] == categoria)
     ].copy()
 
-    df_ytd = df_ytd.groupby(columnas, as_index=False).agg({"Neto_A": "sum"})
-    df_ytd.rename(columns={"Neto_A": "YTD"}, inplace=True)
-
-    # -------- Merge + Variación --------
-    df_compara = pd.merge(df_ppt, df_ytd, on=columnas, how="outer").fillna(0)
-
-    df_compara["Variación % "] = np.where(
-        df_compara["PPT"] != 0,
-        ((df_compara["YTD"] / df_compara["PPT"]) - 1) * 100,
+    df_ytd = df_ytd.groupby(group_cols, as_index=False).agg(YTD=("Neto_A", "sum"))
+    df_tabla = pd.merge(df_ppt, df_ytd, on=group_cols, how="outer").fillna(0)
+    df_tabla["Variación %"] = np.where(
+        df_tabla["PPT"] != 0,
+        ((df_tabla["YTD"] / df_tabla["PPT"]) - 1) * 100,
         0.0
     )
-
-    df_tabla = df_compara[["Cuenta_Nombre_A", "Categoria_A", "YTD", "PPT", "Variación % "]].copy()
-    df_last = df_tabla.groupby("Categoria_A", as_index=False)[["YTD", "PPT"]].sum()
-    df_last["Variación % "] = np.where(
-        df_last["PPT"] != 0,
-        ((df_last["YTD"] / df_last["PPT"]) - 1) * 100,
+    df_tot = df_tabla.groupby(group_col, as_index=False)[["YTD", "PPT"]].sum()
+    df_tot["Variación %"] = np.where(
+        df_tot["PPT"] != 0,
+        ((df_tot["YTD"] / df_tot["PPT"]) - 1) * 100,
         0.0
     )
-    df_last["Cuenta_Nombre_A"] = ""
-
-    df_tabla = pd.concat([df_tabla, df_last], ignore_index=True)
-
-    # tipos numéricos
-    for c in ["YTD", "PPT", "Variación % "]:
-        df_tabla[c] = pd.to_numeric(df_tabla[c], errors="coerce").fillna(0)
-    gb = GridOptionsBuilder.from_dataframe(df_tabla)
+    df_tot[detalle_col] = ""
+    df_out = pd.concat([df_tabla, df_tot], ignore_index=True)
+    for c in ["YTD", "PPT", "Variación %"]:
+        df_out[c] = pd.to_numeric(df_out[c], errors="coerce").fillna(0)
+    gb = GridOptionsBuilder.from_dataframe(df_out)
     gb.configure_default_column(resizable=True, sortable=True, filter=True)
-    gb.configure_column("Categoria_A", rowGroup=True, hide=True)
-    gb.configure_column("Cuenta_Nombre_A", header_name="Cuenta_Nombre_A", pinned="left", minWidth=260)
+    gb.configure_column(group_col, rowGroup=True, hide=True)
+    gb.configure_column(detalle_col, header_name="Cuenta_Nombre_A", pinned="left", minWidth=280)
 
     money_fmt = JsCode("""
         function(params){
@@ -490,22 +478,33 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
 
     gb.configure_column("YTD", type=["numericColumn"], aggFunc="sum", valueFormatter=money_fmt, cellStyle={"textAlign": "right"})
     gb.configure_column("PPT", type=["numericColumn"], aggFunc="sum", valueFormatter=money_fmt, cellStyle={"textAlign": "right"})
-    gb.configure_column("Variación % ", header_name="Variación % ", type=["numericColumn"], aggFunc="last", valueFormatter=pct_fmt, cellStyle={"textAlign": "right"})
+    gb.configure_column("Variación %", header_name="Variación %", type=["numericColumn"], aggFunc="last", valueFormatter=pct_fmt, cellStyle={"textAlign": "right"})
 
     grid_options = gb.build()
     grid_options.update({
         "groupDisplayType": "groupRows",
         "groupDefaultExpanded": 1,
         "autoGroupColumnDef": {
-            "headerName": "Group",
-            "minWidth": 230,
+            "headerName": "Group",  
+            "minWidth": 240,
             "pinned": "left",
             "cellRendererParams": {"suppressCount": False}
-        }
+        },
+        "postSortRows": JsCode("""
+            function(params){
+                // empuja filas con Cuenta_Nombre_A vacío al inicio del grupo
+                var rowNodes = params.nodes;
+                rowNodes.sort(function(a,b){
+                    var aEmpty = (!a.data || !a.data.Cuenta_Nombre_A) ? 0 : 1;
+                    var bEmpty = (!b.data || !b.data.Cuenta_Nombre_A) ? 0 : 1;
+                    return aEmpty - bEmpty;
+                });
+            }
+        """),
     })
 
     AgGrid(
-        df_tabla,
+        df_out,
         gridOptions=grid_options,
         enable_enterprise_modules=True,
         allow_unsafe_jscode=True,
@@ -516,7 +515,8 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
         key=f"agrid_{titulo}_{'-'.join(proyecto_codigo)}_{'-'.join(meses_sel)}_{categoria}"
     )
 
-    return df_tabla
+    return df_out
+
 def seccion_analisis_especial_porcentual(
     df_ppt, df_real, ingreso,
     meses_seleccionado, proyecto_codigo, proyecto_nombre,
@@ -526,7 +526,7 @@ def seccion_analisis_especial_porcentual(
     with st.expander(f"{nombre_funcion.upper()}"):
 
         meses_completos = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
-        orden = {m:i for i, m in enumerate(meses_completos)}
+        orden = {m: i for i, m in enumerate(meses_completos)}
         meses_sel = sorted(list(set(meses_seleccionado)), key=lambda x: orden.get(x, 999))
 
         if not meses_sel:
@@ -559,7 +559,9 @@ def seccion_analisis_especial_porcentual(
 
         ppt_pct = (ppt_nom / ingreso_ppt * 100) if ingreso_ppt != 0 else 0.0
         real_pct = (real_nom / ingreso_real * 100) if ingreso_real != 0 else 0.0
-        dif_pp = real_pct - ppt_pct
+
+        # ✅ CAMBIO: "DIF (pp)" ahora es DIF NOM / INGRESO REAL (en %)
+        dif_s_ing = (dif_nom / ingreso_real * 100) if ingreso_real != 0 else 0.0
 
         df_out = pd.DataFrame([{
             "PPT NOM": ppt_nom,
@@ -567,7 +569,7 @@ def seccion_analisis_especial_porcentual(
             "DIF NOM": dif_nom,
             "PPT %": round(ppt_pct, 2),
             "REAL %": round(real_pct, 2),
-            "DIF (pp)": round(dif_pp, 2)
+            "DIF (pp)": round(dif_s_ing, 2)   # mantiene el nombre de columna
         }])
 
         def resaltar(row):
@@ -580,15 +582,15 @@ def seccion_analisis_especial_porcentual(
 
         st.dataframe(
             df_out.style
-            .apply(resaltar, axis=1)
-            .format({
-                "PPT NOM": "${:,.2f}",
-                "REAL NOM": "${:,.2f}",
-                "DIF NOM": "${:,.2f}",
-                "PPT %": "{:.2f}%",
-                "REAL %": "{:.2f}%",
-                "DIF (pp)": "{:.2f}"
-            }),
+                .apply(resaltar, axis=1)
+                .format({
+                    "PPT NOM": "${:,.2f}",
+                    "REAL NOM": "${:,.2f}",
+                    "DIF NOM": "${:,.2f}",
+                    "PPT %": "{:.2f}%",
+                    "REAL %": "{:.2f}%",
+                    "DIF (pp)": "{:.2f}%",   # ✅ ahora sí es porcentaje
+                }),
             use_container_width=True
         )
 
@@ -601,7 +603,7 @@ def seccion_analisis_por_clasificacion(
     with st.expander(clasificacion_nombre):
 
         meses_completos = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
-        orden = {m:i for i, m in enumerate(meses_completos)}
+        orden = {m: i for i, m in enumerate(meses_completos)}
         meses_sel = sorted(list(set(meses_seleccionado)), key=lambda x: orden.get(x, 999))
 
         if not meses_sel:
@@ -664,7 +666,6 @@ def seccion_analisis_por_clasificacion(
         cat_map_real = dict(zip(real_cat_nom["Categoria_A"], real_cat_nom["Neto_A"]))
         real_cta_nom["Cat_Total"] = real_cta_nom["Categoria_A"].map(cat_map_real).fillna(0)
         real_cta_nom["REAL % CTA"] = np.where(real_cta_nom["Cat_Total"] != 0, (real_cta_nom["Neto_A"] / real_cta_nom["Cat_Total"]) * 100, 0.0)
-
         df_cla = ppt_cla_nom.merge(
             real_cla_nom[["Clasificacion_A", "Neto_A", "REAL %"]].rename(columns={"Neto_A": "REAL NOM"}),
             on="Clasificacion_A",
@@ -672,7 +673,9 @@ def seccion_analisis_por_clasificacion(
         ).rename(columns={"Neto_A": "PPT NOM"}).fillna(0)
 
         df_cla["DIF NOM"] = df_cla["REAL NOM"] - df_cla["PPT NOM"]
-        df_cla["DIF (pp)"] = df_cla["REAL %"] - df_cla["PPT %"]
+
+        # ✅ CAMBIO: "DIF (pp)" = DIF NOM / INGRESO REAL (en %)
+        df_cla["DIF (pp)"] = np.where(ingreso_real_sel != 0, (df_cla["DIF NOM"] / ingreso_real_sel) * 100, 0.0)
 
         def resaltar(row):
             if row["REAL NOM"] > row["PPT NOM"]:
@@ -680,6 +683,7 @@ def seccion_analisis_por_clasificacion(
             elif row["REAL NOM"] < row["PPT NOM"]:
                 return ["background-color: green; color: black;"] * len(row)
             return [""] * len(row)
+
         st.dataframe(
             df_cla.set_index("Clasificacion_A").style
                 .apply(resaltar, axis=1)
@@ -689,7 +693,7 @@ def seccion_analisis_por_clasificacion(
                     "DIF NOM": "${:,.2f}",
                     "PPT %": "{:.2f}%",
                     "REAL %": "{:.2f}%",
-                    "DIF (pp)": "{:.2f}",
+                    "DIF (pp)": "{:.2f}%",   # ✅ ahora sí es porcentaje
                 }),
             use_container_width=True
         )
@@ -703,9 +707,7 @@ def seccion_analisis_por_clasificacion(
         ).fillna(0)
 
         df_cat["DIF NOM"] = df_cat["REAL NOM"] - df_cat["PPT NOM"]
-        df_cat["DIF (pp)"] = df_cat["REAL %"] - df_cat["PPT %"]
-
-        # --- merge nominal cuenta ---
+        df_cat["DIF (pp)"] = np.where(ingreso_real_sel != 0, (df_cat["DIF NOM"] / ingreso_real_sel) * 100, 0.0)
         ppt_cta_nom2 = ppt_cta_nom.rename(columns={"Neto_A": "PPT NOM"}).copy()
         real_cta_nom2 = real_cta_nom.rename(columns={"Neto_A": "REAL NOM"}).copy()
 
@@ -717,7 +719,7 @@ def seccion_analisis_por_clasificacion(
 
         df_cta = df_cta.rename(columns={"PPT % CTA": "PPT %", "REAL % CTA": "REAL %"})
         df_cta["DIF NOM"] = df_cta["REAL NOM"] - df_cta["PPT NOM"]
-        df_cta["DIF (pp)"] = df_cta["REAL %"] - df_cta["PPT %"]
+        df_cta["DIF (pp)"] = np.where(ingreso_real_sel != 0, (df_cta["DIF NOM"] / ingreso_real_sel) * 100, 0.0)
 
         # Filas "Categoría" (cuenta vacía) + filas "Cuenta"
         df_cat_out = df_cat[["Categoria_A", "PPT NOM", "REAL NOM", "DIF NOM", "PPT %", "REAL %", "DIF (pp)"]].copy()
@@ -749,7 +751,7 @@ def seccion_analisis_por_clasificacion(
         pp_formatter = JsCode("""
             function(params) {
                 if (params.value === null || params.value === undefined) return '';
-                return params.value.toFixed(2);
+                return params.value.toFixed(2) + ' %';
             }
         """)
 
@@ -919,7 +921,9 @@ else:
             "calendar-month",     # Meses PPT
             "arrow-left-right",   # Variaciones
             "bar-chart",          # Comparativa
-            "bullseye",           # Objetivos
+            "bullseye",
+            "tools",
+            "speedometer2",
         ],
             default_index=0,
             orientation="horizontal",
@@ -928,7 +932,7 @@ else:
         selected = option_menu(
         menu_title=None,
         options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos", "Modificaciones", "Dashboard"],
-        icons=["Calendar-range", "bar-chart-steps", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "bar-chart", "bullseye"],
+        icons=["Calendar-range", "bar-chart-steps", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "bar-chart", "bullseye", "tools", "speedometer2"],
         default_index=0,
         orientation="horizontal",)
 
@@ -952,25 +956,30 @@ else:
     if selected == "PPT YTD":
         def tabla_ppt_ytd(df_ppt):
             meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
-            meses_disponibles = [m for m in meses_ordenados if m in df_ppt["Mes_A"].unique().tolist()]
+            df_local = df_ppt.copy()
+            df_local["Mes_A"] = df_local["Mes_A"].astype(str).str.strip()
+
+            meses_disponibles = [m for m in meses_ordenados if m in df_local["Mes_A"].unique().tolist()]
 
             if not meses_disponibles:
                 st.error("No hay meses disponibles en df_ppt (Mes_A).")
                 return None
-
-            # Hacer que el filtro se vea completo (sin usar columnas estrechas)
-            mes_corte = st.selectbox(
-                "Selecciona un mes",
-                meses_disponibles,
-                index=len(meses_disponibles) - 1,
-                key="ppt_ytd_mes_corte"
+            meses_sel = st.multiselect(
+                "Selecciona mes(es)",
+                options=meses_disponibles,
+                default=meses_disponibles[-1:],
+                key="ppt_ytd_meses"
             )
-
+            if not meses_sel:
+                st.error("Selecciona por lo menos un mes.")
+                return None
+            orden = {m: i for i, m in enumerate(meses_disponibles)}
+            mes_corte = max(meses_sel, key=lambda m: orden.get(m, -1))
             idx = meses_disponibles.index(mes_corte)
             meses_ytd = meses_disponibles[: idx + 1]
             resumen_proyectos = {
                 nombre: estado_resultado(
-                    df_ppt,
+                    df_local,
                     meses_ytd,
                     nombre,
                     [str(codigo)],
@@ -981,7 +990,7 @@ else:
             }
 
             codigos = proyectos["proyectos"].astype(str).tolist()
-            resumen_proyectos["ESGARI"] = estado_resultado(df_ppt, meses_ytd, "ESGARI", codigos, list_pro)
+            resumen_proyectos["ESGARI"] = estado_resultado(df_local, meses_ytd, "ESGARI", codigos, list_pro)
 
             metricas_seleccionadas = [
                 ("Ingreso", "ingreso_proyecto"),
@@ -999,10 +1008,12 @@ else:
                 ("EBT", "ebt"),
                 ("Margen EBT %", "por_ebt"),
             ]
+
             df_data = []
             for nombre_metrica, clave in metricas_seleccionadas:
-                fila = {"Proyecto": nombre_metrica} 
+                fila = {"Proyecto": nombre_metrica}
                 for proyecto, datos in resumen_proyectos.items():
+                    datos = datos or {}
                     fila[proyecto] = datos.get(clave, None)
                 df_data.append(fila)
 
@@ -1011,11 +1022,13 @@ else:
             ratios = {"Margen U.B. %", "Margen U.O. %", "Margen EBIT %", "Margen EBT %"}
 
             def fmt_money(x):
-                if pd.isna(x): return ""
+                if pd.isna(x):
+                    return ""
                 return f"${float(x):,.0f}"
 
             def fmt_pct(x):
-                if pd.isna(x): return ""
+                if pd.isna(x):
+                    return ""
                 return f"{float(x)*100:,.2f}%"
 
             df_fmt = df_tabla.copy()
@@ -1035,10 +1048,10 @@ else:
                 df_fmt.style
                 .apply(highlight_ratios, axis=1)
                 .set_table_styles([
-                    # Header azul con fuente formal Times New Roman
-                    {"selector": "thead th", "props": "background-color:#00112B;color:white;font-weight:900;text-align:center;font-size:12px; font-family: 'Times New Roman', serif;"},
-                    # Celdas con fuente formal y tamaño adecuado
-                    {"selector": "td", "props": "font-size:12px; padding:6px; font-family: 'Times New Roman', serif;"},
+                    {"selector": "thead th",
+                    "props": "background-color:#00112B;color:white;font-weight:900;text-align:center;font-size:12px; font-family: 'Times New Roman', serif;"},
+                    {"selector": "td",
+                    "props": "font-size:12px; padding:6px; font-family: 'Times New Roman', serif;"},
                 ])
             )
             styler = styler.set_properties(subset=["Proyecto"], **{"text-align": "left", "font-weight": "700"})
@@ -1087,7 +1100,7 @@ else:
                 scrolling=True
             )
 
-            # Descarga igual, sin índices para que no se vean números de fila
+            # Descarga (mes_corte = máximo mes seleccionado)
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df_tabla.to_excel(writer, index=False, sheet_name="Resumen")
@@ -1440,6 +1453,40 @@ else:
             )
 
             st.plotly_chart(fig, use_container_width=True)
+            fig_line = go.Figure()
+
+            fig_line.add_trace(go.Scatter(
+                x=tabla["Mes_A"],
+                y=tabla["PPT"] / 1000,
+                mode="lines+markers+text",
+                name="Ingreso PPT",
+                text=[f"{v:,.1f}k" for v in (tabla["PPT"] / 1000)],
+                textposition="top center"
+            ))
+
+            fig_line.add_trace(go.Scatter(
+                x=tabla["Mes_A"],
+                y=tabla["REAL"] / 1000,
+                mode="lines+markers+text",
+                name="Ingreso REAL",
+                text=[f"{v:,.1f}k" for v in (tabla["REAL"] / 1000)],
+                textposition="top center"
+            ))
+
+            fig_line.update_layout(
+                title="Ingreso PPT vs REAL (Línea)",
+                xaxis_title="Mes",
+                yaxis_title="Ingreso (miles)",
+                hovermode="x unified",
+                height=420,
+                yaxis=dict(tickformat=",.0f", ticksuffix="k"),
+                uniformtext_minsize=10,
+                uniformtext_mode="hide",
+                margin=dict(t=70)
+            )
+
+            st.plotly_chart(fig_line, use_container_width=True)
+
         col1, col2 = st.columns(2)
         meses_seleccionado = filtro_meses(col1, df_ppt)
         proyecto_codigo, proyecto_nombre = filtro_pro(col2)
@@ -2667,7 +2714,7 @@ else:
         st.plotly_chart(fig, use_container_width=True)
         
     elif selected == "Modificaciones":
-        st.subheader("Cambios base de datos (df_base vs df_ppt)")
+        st.subheader("Cambios base de datos")
 
         def tabla_diferencias(df_ppt: pd.DataFrame, df_base: pd.DataFrame):
 
@@ -2801,7 +2848,6 @@ else:
         def _ingresos_total_por_mes(df, meses):
             base = df.copy()
             base.columns = base.columns.astype(str).str.strip()
-
             if "Mes_A" not in base.columns or "Categoria_A" not in base.columns or "Neto_A" not in base.columns:
                 return pd.DataFrame({"Mes_A": [], "INGRESO": []})
 
@@ -2819,7 +2865,6 @@ else:
         def _COSS_total(df, meses):
             base = df.copy()
             base.columns = base.columns.astype(str).str.strip()
-
             if "Mes_A" not in base.columns or "Clasificacion_A" not in base.columns or "Neto_A" not in base.columns:
                 return pd.DataFrame({"Mes_A": [], "COSS": []})
 
@@ -2837,7 +2882,6 @@ else:
         def _GADMN_total(df, meses):
             base = df.copy()
             base.columns = base.columns.astype(str).str.strip()
-
             if "Mes_A" not in base.columns or "Clasificacion_A" not in base.columns or "Neto_A" not in base.columns:
                 return pd.DataFrame({"Mes_A": [], "G.ADMN": []})
 
@@ -2859,7 +2903,6 @@ else:
                 df_real_mes = pd.DataFrame({"Mes_A": [], "REAL": []})
 
             line = df_ppt_mes.merge(df_real_mes, on="Mes_A", how="outer").fillna(0)
-
             if "PPT" not in line.columns:
                 line["PPT"] = 0
             if "REAL" not in line.columns:
@@ -2881,10 +2924,53 @@ else:
             )
             return fig
 
+        def _bar_mes_ppt_real(df_ppt_mes, df_real_mes, titulo, unidad="MXN"):
+            if df_ppt_mes is None:
+                df_ppt_mes = pd.DataFrame({"Mes_A": [], "PPT": []})
+            if df_real_mes is None:
+                df_real_mes = pd.DataFrame({"Mes_A": [], "REAL": []})
+
+            bar = df_ppt_mes.merge(df_real_mes, on="Mes_A", how="outer").fillna(0)
+            if "PPT" not in bar.columns:
+                bar["PPT"] = 0
+            if "REAL" not in bar.columns:
+                bar["REAL"] = 0
+
+            bar = _ordenar_meses(bar, "Mes_A")
+            if bar.empty:
+                return None
+
+            fig = go.Figure()
+            fig.add_bar(
+                x=bar["Mes_A"],
+                y=bar["PPT"],
+                name="PPT",
+                text=[f"${v:,.0f}" for v in bar["PPT"]],
+                textposition="outside"
+            )
+            fig.add_bar(
+                x=bar["Mes_A"],
+                y=bar["REAL"],
+                name="REAL",
+                text=[f"${v:,.0f}" for v in bar["REAL"]],
+                textposition="outside"
+            )
+
+            fig.update_layout(
+                title=titulo,
+                xaxis_title="Mes",
+                yaxis_title=unidad,
+                barmode="group",
+                height=420,
+                hovermode="x unified",
+                legend_title="Tipo"
+            )
+            return fig
         df_ppt = df_ppt.copy()
         df_real = df_real.copy()
         df_ppt.columns = df_ppt.columns.astype(str).str.strip()
         df_real.columns = df_real.columns.astype(str).str.strip()
+
         if "Mes_A" not in df_ppt.columns or "Mes_A" not in df_real.columns:
             st.error("Falta la columna Mes_A en df_ppt o df_real. Revisa nombres de columnas.")
             with st.expander("🛠 Diagnóstico DASHBOARD", expanded=True):
@@ -2894,7 +2980,6 @@ else:
 
         meses_ppt = df_ppt["Mes_A"].astype(str).str.strip().unique().tolist()
         meses_real = df_real["Mes_A"].astype(str).str.strip().unique().tolist()
-
         meses_disponibles = [m for m in meses_ordenados if (m in meses_ppt) or (m in meses_real)]
 
         meses_sel = st.multiselect(
@@ -2903,24 +2988,10 @@ else:
             default=meses_disponibles[-1:] if meses_disponibles else [],
             key="dashboard_meses_excel"
         )
-
-        # ✅ Diagnóstico SIEMPRE antes del stop
-        with st.expander("🛠 Diagnóstico DASHBOARD", expanded=False):
-            try:
-                st.write("df_ppt shape:", df_ppt.shape)
-                st.write("df_real shape:", df_real.shape)
-                st.write("Columnas PPT:", list(df_ppt.columns))
-                st.write("Columnas REAL:", list(df_real.columns))
-                st.write("Meses PPT:", sorted(meses_ppt))
-                st.write("Meses REAL:", sorted(meses_real))
-                st.write("meses_disponibles:", meses_disponibles)
-                st.write("meses_sel:", meses_sel)
-            except Exception as e:
-                st.exception(e)
-
         if not meses_sel:
             st.error("Favor de seleccionar por lo menos un mes.")
             st.stop()
+
         proyectos_local = proyectos.copy()
         proyectos_local.columns = proyectos_local.columns.astype(str).str.strip()
 
@@ -2936,27 +3007,27 @@ else:
 
         nombres = df_visibles["nombre"].tolist()
         codigos = df_visibles["proyectos"].tolist()
-
         ing_ppt_mes = _ingresos_total_por_mes(df_ppt, meses_sel).rename(columns={"INGRESO": "PPT"})
         ing_real_mes = _ingresos_total_por_mes(df_real, meses_sel).rename(columns={"INGRESO": "REAL"})
-        fig1 = _linea_ppt_real(ing_ppt_mes, ing_real_mes, "INGRESO")
+        fig_ing_line = _linea_ppt_real(ing_ppt_mes, ing_real_mes, "INGRESO (línea)")
 
         coss_ppt_mes = _COSS_total(df_ppt, meses_sel).rename(columns={"COSS": "PPT"})
         coss_real_mes = _COSS_total(df_real, meses_sel).rename(columns={"COSS": "REAL"})
-        fig3 = _linea_ppt_real(coss_ppt_mes, coss_real_mes, "COSS")
+        fig_coss_line = _linea_ppt_real(coss_ppt_mes, coss_real_mes, "COSS (línea)")
 
         gadmn_ppt_mes = _GADMN_total(df_ppt, meses_sel).rename(columns={"G.ADMN": "PPT"})
         gadmn_real_mes = _GADMN_total(df_real, meses_sel).rename(columns={"G.ADMN": "REAL"})
-        fig4 = _linea_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN")
+        fig_gadmn_line = _linea_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN (línea)")
+        fig_ing_bar = _bar_mes_ppt_real(ing_ppt_mes, ing_real_mes, "INGRESO mensual (PPT vs REAL)")
+        fig_coss_bar = _bar_mes_ppt_real(coss_ppt_mes, coss_real_mes, "COSS mensual (PPT vs REAL)")
+        fig_gadmn_bar = _bar_mes_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN mensual (PPT vs REAL)")
         ppt_pct = {}
         real_pct = {}
 
         for nombre, codigo in zip(nombres, codigos):
             codigo_list = [str(codigo)]
-
             er_ppt = estado_resultado(df_ppt, meses_sel, nombre, codigo_list, list_pro) or {}
             er_real = estado_resultado(df_real, meses_sel, nombre, codigo_list, list_pro) or {}
-
             ppt_pct[nombre] = to_float(er_ppt.get("por_utilidad_operativa"))
             real_pct[nombre] = to_float(er_real.get("por_utilidad_operativa"))
 
@@ -2966,22 +3037,22 @@ else:
             "REAL": [real_pct.get(n, 0.0) for n in nombres],
         }).sort_values("REAL", ascending=False)
 
-        fig2 = go.Figure()
-        fig2.add_bar(
+        fig_uo = go.Figure()
+        fig_uo.add_bar(
             x=df_uo["Proyecto"],
             y=df_uo["PPT"],
             name="PPT",
             text=[f"{v*100:.1f}%" for v in df_uo["PPT"]],
             textposition="outside"
         )
-        fig2.add_bar(
+        fig_uo.add_bar(
             x=df_uo["Proyecto"],
             y=df_uo["REAL"],
             name="REAL",
             text=[f"{v*100:.1f}%" for v in df_uo["REAL"]],
             textposition="outside"
         )
-        fig2.update_layout(
+        fig_uo.update_layout(
             title="% Utilidad Operativa",
             xaxis_title="Proyecto",
             yaxis_title="%",
@@ -2992,31 +3063,58 @@ else:
             xaxis_tickformat=".0%"
         )
 
-        c1, c2 = st.columns(2)
-        with c1:
-            if fig1 is None:
-                st.info("No hay datos de INGRESO para los meses seleccionados.")
-            else:
-                st.plotly_chart(fig1, use_container_width=True)
+        tab1, tab2 = st.tabs(["YTD", "Mensual"])
 
-        with c2:
-            if fig3 is None:
-                st.info("No hay datos de COSS para los meses seleccionados.")
-            else:
-                st.plotly_chart(fig3, use_container_width=True)
+        with tab1:
+            c1, c2 = st.columns(2)
+            with c1:
+                if fig_ing_line is None:
+                    st.info("No hay datos de INGRESO para los meses seleccionados.")
+                else:
+                    st.plotly_chart(fig_ing_line, use_container_width=True)
 
-        c3, c4 = st.columns(2)
-        with c3:
-            if fig4 is None:
-                st.info("No hay datos de G.ADMN para los meses seleccionados.")
-            else:
-                st.plotly_chart(fig4, use_container_width=True)
+            with c2:
+                if fig_coss_line is None:
+                    st.info("No hay datos de COSS para los meses seleccionados.")
+                else:
+                    st.plotly_chart(fig_coss_line, use_container_width=True)
 
-        with c4:
-            if df_uo.empty:
-                st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
-            else:
-                st.plotly_chart(fig2, use_container_width=True)
+            c3, c4 = st.columns(2)
+            with c3:
+                if fig_gadmn_line is None:
+                    st.info("No hay datos de G.ADMN para los meses seleccionados.")
+                else:
+                    st.plotly_chart(fig_gadmn_line, use_container_width=True)
+
+            with c4:
+                if df_uo.empty:
+                    st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
+                else:
+                    st.plotly_chart(fig_uo, use_container_width=True)
+
+        with tab2:
+            st.subheader("Mensual (barras estilo % Utilidad Operativa)")
+
+            m1, m2 = st.columns(2)
+            with m1:
+                if fig_ing_bar is None:
+                    st.info("No hay datos de INGRESO para los meses seleccionados.")
+                else:
+                    st.plotly_chart(fig_ing_bar, use_container_width=True)
+
+            with m2:
+                if fig_coss_bar is None:
+                    st.info("No hay datos de COSS para los meses seleccionados.")
+                else:
+                    st.plotly_chart(fig_coss_bar, use_container_width=True)
+
+            m3, _ = st.columns([1, 1])
+            with m3:
+                if fig_gadmn_bar is None:
+                    st.info("No hay datos de G.ADMN para los meses seleccionados.")
+                else:
+                    st.plotly_chart(fig_gadmn_bar, use_container_width=True)
+
 
 
 
