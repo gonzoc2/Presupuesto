@@ -1072,7 +1072,7 @@ else:
     elif st.session_state["rol"] == "director" or st.session_state["rol"] == "admin":
         selected = option_menu(
         menu_title=None,
-        options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos", "Modificaciones", "Dashboard", "Resumen],
+        options=["PPT YTD", "PPT VS ACTUAL", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Comparativa", "Objetivos", "Modificaciones", "Dashboard", "Resumen"],
         icons=["Calendar-range", "bar-chart-steps", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "bar-chart", "bullseye", "tools", "speedometer2"],
         default_index=0,
         orientation="horizontal",)
@@ -3367,6 +3367,7 @@ else:
 
             with st.expander("Detalle G. Admn", expanded=False):
                 st.info("Aquí va tu AgGrid agrupado por Categoría → Cuenta (cerrado por default).")
+
 
 
 
