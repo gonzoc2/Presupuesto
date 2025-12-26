@@ -398,8 +398,6 @@ def filtro_ceco(col):
     ceco_nombre = col.selectbox("Selecciona un ceco", opciones)
     ceco_codigo = [nombre_a_codigo.get(ceco_nombre)] if ceco_nombre in nombre_a_codigo else []
     return ceco_codigo, ceco_nombre
-
-
 def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_seleccionado, clasificacion, categoria, titulo):
 
     st.write(titulo)
@@ -453,12 +451,16 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
     )
 
     for c in ["YTD", "PPT", "Variación %"]:
-        df_out[c] = pd.to_numeric(df_out[c], errors="coerce").fillna(0)
+        df_out[c] = pd.to_numeric(df_out[c], errors="coerce").fillna(0.0)
 
     # ---------------- AgGrid ----------------
     gb = GridOptionsBuilder.from_dataframe(df_out)
     gb.configure_default_column(resizable=True, sortable=True, filter=True)
+
+    # Agrupa por Categoria_A (se mostrará como "Group row" arriba)
     gb.configure_column(group_col, rowGroup=True, hide=True)
+
+    # Columna separada para la cuenta
     gb.configure_column(detalle_col, header_name="Cuenta_Nombre_A", minWidth=320)
 
     money_fmt = JsCode("""
@@ -475,26 +477,53 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
         }
     """)
 
-    gb.configure_column("PPT", type=["numericColumn"], aggFunc="sum", valueFormatter=money_fmt, cellStyle={"textAlign": "right"})
-    gb.configure_column("YTD", type=["numericColumn"], aggFunc="sum", valueFormatter=money_fmt, cellStyle={"textAlign": "right"})
-    gb.configure_column("Variación %", header_name="Variación %", type=["numericColumn"], aggFunc="last", valueFormatter=pct_fmt, cellStyle={"textAlign": "right"})
+    # ✅ En group row: usa aggData.PPT y aggData.YTD
+    var_value_getter = JsCode("""
+        function(params){
+            if (params.node && params.node.group) {
+                var ppt = (params.node.aggData && params.node.aggData.PPT) ? params.node.aggData.PPT : 0;
+                var ytd = (params.node.aggData && params.node.aggData.YTD) ? params.node.aggData.YTD : 0;
+                if (!ppt) return 0;
+                return ((ytd / ppt) - 1) * 100;
+            }
+            return params.data ? params.data["Variación %"] : 0;
+        }
+    """)
+
+    gb.configure_column("PPT", type=["numericColumn"], aggFunc="sum",
+                        valueFormatter=money_fmt, cellStyle={"textAlign": "right"})
+    gb.configure_column("YTD", type=["numericColumn"], aggFunc="sum",
+                        valueFormatter=money_fmt, cellStyle={"textAlign": "right"})
+
+    gb.configure_column(
+        "Variación %",
+        header_name="Variación %",
+        type=["numericColumn"],
+        aggFunc="last",                 # en group row no importa: se recalcula con valueGetter
+        valueGetter=var_value_getter,
+        valueFormatter=pct_fmt,
+        cellStyle={"textAlign": "right"}
+    )
 
     grid_options = gb.build()
     grid_options.update({
+        # ✅ Esto hace que el grupo sea la fila de arriba (como tu 1ª imagen)
         "groupDisplayType": "groupRows",
         "groupDefaultExpanded": 1,
+
+        # ✅ NO footer abajo
         "groupIncludeFooter": False,
         "groupIncludeTotalFooter": False,
+
+        # ✅ Columna Group separada y primero
         "autoGroupColumnDef": {
             "headerName": "Group",
-            "minWidth": 260,
+            "minWidth": 240,
             "pinned": "left",
-            "cellRenderer": "agGroupCellRenderer",
-            "cellRendererParams": {
-                "suppressCount": False
-            }
+            "cellRendererParams": {"suppressCount": False}
         },
 
+        # deja visible Cuenta_Nombre_A como columna aparte
         "suppressRowGroupHidesColumns": True,
     })
 
@@ -3137,7 +3166,7 @@ else:
                 else:
                     st.plotly_chart(fig_coss_bar, use_container_width=True)
 
-            m3, m4= st.columns([2])
+            m3, m4= st.columns(2)
             with m3:
                 if fig_gadmn_bar is None:
                     st.info("No hay datos de G.ADMN para los meses seleccionados.")
@@ -3148,6 +3177,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True)
+
 
 
 
