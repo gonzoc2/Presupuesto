@@ -409,6 +409,7 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
     df_agrid = df_agrid.copy()
     df_ppt_actual = df_ppt_actual.copy()
 
+    # ---------------- Limpieza ----------------
     for df in (df_agrid, df_ppt_actual):
         df["Proyecto_A"] = df["Proyecto_A"].astype(str).str.strip()
         df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
@@ -424,7 +425,7 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
     detalle_col = "Cuenta_Nombre_A"
     group_cols = [group_col, detalle_col]
 
-    # -------- PPT --------
+    # ---------------- PPT ----------------
     df_ppt = df_agrid[
         (df_agrid["Mes_A"].isin(meses_sel)) &
         (df_agrid["Proyecto_A"].isin(proyecto_codigo)) &
@@ -432,7 +433,7 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
     ].copy()
     df_ppt = df_ppt.groupby(group_cols, as_index=False).agg(PPT=("Neto_A", "sum"))
 
-    # -------- REAL (YTD) --------
+    # ---------------- REAL (YTD) ----------------
     df_ytd = df_ppt_actual[
         (df_ppt_actual["Mes_A"].isin(meses_sel)) &
         (df_ppt_actual["Proyecto_A"].isin(proyecto_codigo)) &
@@ -440,7 +441,7 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
     ].copy()
     df_ytd = df_ytd.groupby(group_cols, as_index=False).agg(YTD=("Neto_A", "sum"))
 
-    # -------- Merge --------
+    # ---------------- Merge ----------------
     df_det = pd.merge(df_ppt, df_ytd, on=group_cols, how="outer").fillna(0.0)
 
     df_det["Variación %"] = np.where(
@@ -449,14 +450,14 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
         0.0
     )
 
-    # ✅ TOTAL por categoría (fila del grupo)
+    # ---------------- TOTAL por categoría (fila header del grupo) ----------------
     df_tot = df_det.groupby(group_col, as_index=False)[["PPT", "YTD"]].sum()
     df_tot["Variación %"] = np.where(
         df_tot["PPT"] != 0,
         ((df_tot["YTD"] / df_tot["PPT"]) - 1) * 100,
         0.0
     )
-    df_tot[detalle_col] = ""   # <- esto hace que sea la fila “header/total” del grupo
+    df_tot[detalle_col] = ""     # fila total / header
     df_tot["__is_total"] = 1
 
     df_det["__is_total"] = 0
@@ -481,7 +482,7 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
         }
     """)
 
-    # ✅ Sort dentro de cada grupo: TOTAL primero
+    # Orden dentro de cada grupo: TOTAL primero
     post_sort = JsCode("""
         function(params){
             var nodes = params.nodes;
@@ -490,7 +491,6 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
                 var bt = (b.data && b.data.__is_total) ? 0 : 1;
                 if (at !== bt) return at - bt;
 
-                // Luego ordenar por Cuenta_Nombre_A
                 var an = (a.data && a.data.Cuenta_Nombre_A) ? a.data.Cuenta_Nombre_A : '';
                 var bn = (b.data && b.data.Cuenta_Nombre_A) ? b.data.Cuenta_Nombre_A : '';
                 return an.localeCompare(bn);
@@ -501,22 +501,28 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
     gb = GridOptionsBuilder.from_dataframe(df_out)
     gb.configure_default_column(resizable=True, sortable=True, filter=True)
 
-    # Agrupar por Categoria_A (pero ocultarla como columna)
+    # (Puedes dejarlo, pero OJO: luego sobrescribimos columnDefs abajo)
     gb.configure_column(group_col, rowGroup=True, hide=True)
-
-    # Oculta helper
     gb.configure_column("__is_total", hide=True)
 
     grid_options = gb.build()
 
-    # ✅ CLAVE: columna Group separada (como tu 1ª imagen)
+    # ✅ Config de agrupación tipo "Group" (como tu 1ª imagen)
     grid_options["groupSuppressAutoColumn"] = True
     grid_options["groupDisplayType"] = "singleColumn"
     grid_options["groupDefaultExpanded"] = 1
     grid_options["postSortRows"] = post_sort
 
-    # ✅ Columnas EXACTAS que quieres ver
+    # ✅ CLAVE: NO perder rowGroup cuando defines columnDefs
     grid_options["columnDefs"] = [
+        # 🔥 Mantiene el grouping real (aunque esté oculto)
+        {
+            "field": group_col,   # "Categoria_A"
+            "rowGroup": True,
+            "hide": True
+        },
+
+        # Columna visible "Group" expandible
         {
             "headerName": "Group",
             "showRowGroup": group_col,
@@ -554,6 +560,11 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
             "valueFormatter": pct_fmt,
             "cellStyle": {"textAlign": "right"},
         },
+        # helper (oculto) para sort/estilo
+        {
+            "field": "__is_total",
+            "hide": True
+        },
     ]
 
     AgGrid(
@@ -569,6 +580,7 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
     )
 
     return df_out
+
 
 def seccion_analisis_especial_porcentual(
     df_ppt, df_real, ingreso,
@@ -3205,6 +3217,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True)
+
 
 
 
