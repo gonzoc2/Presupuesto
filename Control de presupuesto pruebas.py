@@ -441,30 +441,17 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
     ].copy()
     df_ytd = df_ytd.groupby(group_cols, as_index=False).agg(YTD=("Neto_A", "sum"))
 
-    # ---------------- Merge ----------------
-    df_det = pd.merge(df_ppt, df_ytd, on=group_cols, how="outer").fillna(0.0)
+    # ---------------- Merge detalle ----------------
+    df_out = pd.merge(df_ppt, df_ytd, on=group_cols, how="outer").fillna(0.0)
 
-    df_det["Variación %"] = np.where(
-        df_det["PPT"] != 0,
-        ((df_det["YTD"] / df_det["PPT"]) - 1) * 100,
+    # Variación % a nivel CUENTA (leaf rows)
+    df_out["Variación %"] = np.where(
+        df_out["PPT"] != 0,
+        ((df_out["YTD"] / df_out["PPT"]) - 1) * 100,
         0.0
     )
 
-    # ---------------- TOTAL por categoría (fila header del grupo) ----------------
-    df_tot = df_det.groupby(group_col, as_index=False)[["PPT", "YTD"]].sum()
-    df_tot["Variación %"] = np.where(
-        df_tot["PPT"] != 0,
-        ((df_tot["YTD"] / df_tot["PPT"]) - 1) * 100,
-        0.0
-    )
-    df_tot[detalle_col] = ""     # fila total / header
-    df_tot["__is_total"] = 1
-
-    df_det["__is_total"] = 0
-
-    df_out = pd.concat([df_tot, df_det], ignore_index=True)
-
-    for c in ["PPT", "YTD", "Variación %", "__is_total"]:
+    for c in ["PPT", "YTD", "Variación %"]:
         df_out[c] = pd.to_numeric(df_out[c], errors="coerce").fillna(0.0)
 
     # ---------------- AgGrid ----------------
@@ -482,90 +469,54 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
         }
     """)
 
-    # Orden dentro de cada grupo: TOTAL primero
-    post_sort = JsCode("""
+    # ✅ Variación % para grupos: usa aggData (PPT y YTD ya vienen sumados por aggFunc)
+    var_value_getter = JsCode("""
         function(params){
-            var nodes = params.nodes;
-            nodes.sort(function(a,b){
-                var at = (a.data && a.data.__is_total) ? 0 : 1;
-                var bt = (b.data && b.data.__is_total) ? 0 : 1;
-                if (at !== bt) return at - bt;
-
-                var an = (a.data && a.data.Cuenta_Nombre_A) ? a.data.Cuenta_Nombre_A : '';
-                var bn = (b.data && b.data.Cuenta_Nombre_A) ? b.data.Cuenta_Nombre_A : '';
-                return an.localeCompare(bn);
-            });
+            // Group row
+            if (params.node && params.node.group) {
+                var agg = params.node.aggData || {};
+                var ppt = agg.PPT || 0;
+                var ytd = agg.YTD || 0;
+                if (ppt === 0) return 0;
+                return ((ytd / ppt) - 1) * 100;
+            }
+            // Leaf row
+            return params.data ? params.data["Variación %"] : 0;
         }
     """)
 
     gb = GridOptionsBuilder.from_dataframe(df_out)
     gb.configure_default_column(resizable=True, sortable=True, filter=True)
 
-    # (Puedes dejarlo, pero OJO: luego sobrescribimos columnDefs abajo)
-    gb.configure_column(group_col, rowGroup=True, hide=True)
-    gb.configure_column("__is_total", hide=True)
-
     grid_options = gb.build()
 
-    # ✅ Config de agrupación tipo "Group" (como tu 1ª imagen)
-    grid_options["groupSuppressAutoColumn"] = True
+    # ✅ Agrupar por Categoria_A (oculta)
+    # (IMPORTANTE: lo ponemos en columnDefs para no perderlo)
+    grid_options["columnDefs"] = [
+        {"field": group_col, "rowGroup": True, "hide": True},
+
+        {"field": detalle_col, "headerName": "Cuenta_Nombre_A", "minWidth": 320},
+
+        {"field": "PPT", "headerName": "PPT", "type": ["numericColumn"],
+         "aggFunc": "sum", "valueFormatter": money_fmt, "cellStyle": {"textAlign": "right"}},
+
+        {"field": "YTD", "headerName": "YTD", "type": ["numericColumn"],
+         "aggFunc": "sum", "valueFormatter": money_fmt, "cellStyle": {"textAlign": "right"}},
+
+        # 👇 No usamos "aggFunc": aquí. La calculamos para group con valueGetter.
+        {"field": "Variación %", "headerName": "Variación %", "type": ["numericColumn"],
+         "valueGetter": var_value_getter, "valueFormatter": pct_fmt, "cellStyle": {"textAlign": "right"}},
+    ]
+
+    # ✅ UNA sola columna de Group (autoGroup column)
     grid_options["groupDisplayType"] = "singleColumn"
     grid_options["groupDefaultExpanded"] = 1
-    grid_options["postSortRows"] = post_sort
-
-    # ✅ CLAVE: NO perder rowGroup cuando defines columnDefs
-    grid_options["columnDefs"] = [
-        # 🔥 Mantiene el grouping real (aunque esté oculto)
-        {
-            "field": group_col,   # "Categoria_A"
-            "rowGroup": True,
-            "hide": True
-        },
-
-        # Columna visible "Group" expandible
-        {
-            "headerName": "Group",
-            "showRowGroup": group_col,
-            "cellRenderer": "agGroupCellRenderer",
-            "cellRendererParams": {"suppressCount": False},
-            "minWidth": 240,
-            "pinned": "left",
-        },
-        {
-            "field": detalle_col,
-            "headerName": "Cuenta_Nombre_A",
-            "minWidth": 320,
-        },
-        {
-            "field": "PPT",
-            "headerName": "PPT",
-            "type": ["numericColumn"],
-            "aggFunc": "sum",
-            "valueFormatter": money_fmt,
-            "cellStyle": {"textAlign": "right"},
-        },
-        {
-            "field": "YTD",
-            "headerName": "YTD",
-            "type": ["numericColumn"],
-            "aggFunc": "sum",
-            "valueFormatter": money_fmt,
-            "cellStyle": {"textAlign": "right"},
-        },
-        {
-            "field": "Variación %",
-            "headerName": "Variación %",
-            "type": ["numericColumn"],
-            "aggFunc": "last",
-            "valueFormatter": pct_fmt,
-            "cellStyle": {"textAlign": "right"},
-        },
-        # helper (oculto) para sort/estilo
-        {
-            "field": "__is_total",
-            "hide": True
-        },
-    ]
+    grid_options["autoGroupColumnDef"] = {
+        "headerName": "Group",
+        "minWidth": 260,
+        "pinned": "left",
+        "cellRendererParams": {"suppressCount": False},
+    }
 
     AgGrid(
         df_out,
@@ -3116,9 +3067,11 @@ else:
         gadmn_ppt_mes = _GADMN_total(df_ppt, meses_sel).rename(columns={"G.ADMN": "PPT"})
         gadmn_real_mes = _GADMN_total(df_real, meses_sel).rename(columns={"G.ADMN": "REAL"})
         fig_gadmn_line = _linea_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN (línea)")
+
         fig_ing_bar = _bar_mes_ppt_real(ing_ppt_mes, ing_real_mes, "INGRESO mensual (PPT vs REAL)")
         fig_coss_bar = _bar_mes_ppt_real(coss_ppt_mes, coss_real_mes, "COSS mensual (PPT vs REAL)")
         fig_gadmn_bar = _bar_mes_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN mensual (PPT vs REAL)")
+
         ppt_pct = {}
         real_pct = {}
 
@@ -3169,26 +3122,27 @@ else:
                 if fig_ing_line is None:
                     st.info("No hay datos de INGRESO para los meses seleccionados.")
                 else:
-                    st.plotly_chart(fig_ing_line, use_container_width=True)
+                    st.plotly_chart(fig_ing_line, use_container_width=True, key="ytd_ing_line")
 
             with c2:
                 if fig_coss_line is None:
                     st.info("No hay datos de COSS para los meses seleccionados.")
                 else:
-                    st.plotly_chart(fig_coss_line, use_container_width=True)
+                    st.plotly_chart(fig_coss_line, use_container_width=True, key="ytd_coss_line")
 
             c3, c4 = st.columns(2)
             with c3:
                 if fig_gadmn_line is None:
                     st.info("No hay datos de G.ADMN para los meses seleccionados.")
                 else:
-                    st.plotly_chart(fig_gadmn_line, use_container_width=True)
+                    st.plotly_chart(fig_gadmn_line, use_container_width=True, key="ytd_gadmn_line")
 
             with c4:
                 if df_uo.empty:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
-                    st.plotly_chart(fig_uo, use_container_width=True)
+                    # OJO: misma figura se dibuja en tab2, por eso key diferente
+                    st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
 
         with tab2:
             st.subheader("Mensual")
@@ -3198,25 +3152,26 @@ else:
                 if fig_ing_bar is None:
                     st.info("No hay datos de INGRESO para los meses seleccionados.")
                 else:
-                    st.plotly_chart(fig_ing_bar, use_container_width=True)
+                    st.plotly_chart(fig_ing_bar, use_container_width=True, key="m_ing_bar")
 
             with m2:
                 if fig_coss_bar is None:
                     st.info("No hay datos de COSS para los meses seleccionados.")
                 else:
-                    st.plotly_chart(fig_coss_bar, use_container_width=True)
+                    st.plotly_chart(fig_coss_bar, use_container_width=True, key="m_coss_bar")
 
-            m3, m4= st.columns(2)
+            m3, m4 = st.columns(2)
             with m3:
                 if fig_gadmn_bar is None:
                     st.info("No hay datos de G.ADMN para los meses seleccionados.")
                 else:
-                    st.plotly_chart(fig_gadmn_bar, use_container_width=True)
+                    st.plotly_chart(fig_gadmn_bar, use_container_width=True, key="m_gadmn_bar")
+
             with m4:
                 if df_uo.empty:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
-                    st.plotly_chart(fig_uo, use_container_width=True)
+                    st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
 
 
 
