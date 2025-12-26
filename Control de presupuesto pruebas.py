@@ -16,7 +16,7 @@ import re
 
 st.set_page_config(
     page_title="Control de Presupuesto",
-    page_icon="🚚", #buscar un icono
+    page_icon="🚛", #buscar un icono
     layout="wide"   
 )
 
@@ -759,11 +759,19 @@ def seccion_analisis_por_clasificacion(
         df_cta["DIF NOM"] = df_cta["REAL NOM"] - df_cta["PPT NOM"]
         df_cta["DIF %"] = np.where(df_cta["PPT NOM"] != 0, ((df_cta["REAL NOM"] / df_cta["PPT NOM"]) - 1) * 100, 0.0)
         df_cta["%Ingresos"] = np.where(ingreso_real_sel != 0, (df_cta["DIF NOM"] / ingreso_real_sel) * 100, 0.0)
+        # ---------------- OUTPUT AGGRID (solo CUENTAS, agrupadas por Categoría) ----------------
         df_out = df_cta[[
             "Categoria_A", "Cuenta_Nombre_A",
             "PPT NOM", "REAL NOM", "DIF NOM", "DIF %",
             "PPT %", "REAL %", "%Ingresos"
         ]].copy()
+
+        # ✅ Para poder calcular % correctos en grupo, agregamos ingresos por fila (mismos para todas)
+        # No cambia tu lógica: solo habilita que el grupo sume ingresos y calcule ratios.
+        df_out["ING_PPT"] = float(ingreso_ppt_sel or 0.0)
+        df_out["ING_REAL"] = float(ingreso_real_sel or 0.0)
+
+        # ---------------- AGGRID ----------------
         gb = GridOptionsBuilder.from_dataframe(df_out)
         gb.configure_default_column(resizable=True, sortable=True, filter=True)
 
@@ -784,6 +792,62 @@ def seccion_analisis_por_clasificacion(
             }
         """)
 
+        # ✅ DIF % correcto para GRUPO: (REAL_total / PPT_total - 1) * 100
+        dif_pct_value_getter = JsCode("""
+            function(params){
+                if (params.node && params.node.group) {
+                    var agg = params.node.aggData || {};
+                    var ppt = agg["PPT NOM"] || 0;
+                    var real = agg["REAL NOM"] || 0;
+                    if (ppt === 0) return 0;
+                    return ((real / ppt) - 1) * 100;
+                }
+                return params.data ? params.data["DIF %"] : 0;
+            }
+        """)
+
+        # ✅ PPT % correcto para GRUPO: PPT_total / ING_PPT_total
+        ppt_pct_value_getter = JsCode("""
+            function(params){
+                if (params.node && params.node.group) {
+                    var agg = params.node.aggData || {};
+                    var ppt = agg["PPT NOM"] || 0;
+                    var ing = agg["ING_PPT"] || 0;
+                    if (ing === 0) return 0;
+                    return (ppt / ing) * 100;
+                }
+                return params.data ? params.data["PPT %"] : 0;
+            }
+        """)
+
+        # ✅ REAL % correcto para GRUPO: REAL_total / ING_REAL_total
+        real_pct_value_getter = JsCode("""
+            function(params){
+                if (params.node && params.node.group) {
+                    var agg = params.node.aggData || {};
+                    var real = agg["REAL NOM"] || 0;
+                    var ing = agg["ING_REAL"] || 0;
+                    if (ing === 0) return 0;
+                    return (real / ing) * 100;
+                }
+                return params.data ? params.data["REAL %"] : 0;
+            }
+        """)
+
+        # ✅ %Ingresos correcto para GRUPO: DIF_NOM_total / ING_REAL_total
+        ingresos_pct_value_getter = JsCode("""
+            function(params){
+                if (params.node && params.node.group) {
+                    var agg = params.node.aggData || {};
+                    var dif = agg["DIF NOM"] || 0;
+                    var ing = agg["ING_REAL"] || 0;
+                    if (ing === 0) return 0;
+                    return (dif / ing) * 100;
+                }
+                return params.data ? params.data["%Ingresos"] : 0;
+            }
+        """)
+
         dif_pct_color = JsCode("""
             function(params){
                 if (params.value === null || params.value === undefined) return {};
@@ -796,11 +860,13 @@ def seccion_analisis_por_clasificacion(
         """)
 
         gridOptions = gb.build()
+
         gridOptions["columnDefs"] = [
             {"field": group_col, "rowGroup": True, "hide": True},
 
             {"field": detalle_col, "headerName": "Cuenta", "minWidth": 320},
 
+            # MXN sumables
             {"field": "PPT NOM", "headerName": "PPT NOM", "type": ["numericColumn"], "aggFunc": "sum",
              "valueFormatter": currency_formatter, "cellStyle": {"textAlign": "right"}},
 
@@ -809,27 +875,36 @@ def seccion_analisis_por_clasificacion(
 
             {"field": "DIF NOM", "headerName": "DIF NOM", "type": ["numericColumn"], "aggFunc": "sum",
              "valueFormatter": currency_formatter, "cellStyle": {"textAlign": "right"}},
-            {"field": "DIF %", "headerName": "DIF %", "type": ["numericColumn"], "aggFunc": "last",
-             "valueFormatter": pct_formatter, "cellStyle": dif_pct_color},
 
-            {"field": "PPT %", "headerName": "PPT %", "type": ["numericColumn"], "aggFunc": "last",
-             "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
+            # % calculados correctamente en grupo
+            {"field": "DIF %", "headerName": "DIF %", "type": ["numericColumn"],
+             "valueGetter": dif_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": dif_pct_color},
 
-            {"field": "REAL %", "headerName": "REAL %", "type": ["numericColumn"], "aggFunc": "last",
-             "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
+            {"field": "PPT %", "headerName": "PPT %", "type": ["numericColumn"],
+             "valueGetter": ppt_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
 
-            {"field": "%Ingresos", "headerName": "%Ingresos", "type": ["numericColumn"], "aggFunc": "last",
-             "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
+            {"field": "REAL %", "headerName": "REAL %", "type": ["numericColumn"],
+             "valueGetter": real_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
+
+            {"field": "%Ingresos", "headerName": "%Ingresos", "type": ["numericColumn"],
+             "valueGetter": ingresos_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
+
+            # ocultos para cálculo de grupo
+            {"field": "ING_PPT", "hide": True, "aggFunc": "sum"},
+            {"field": "ING_REAL", "hide": True, "aggFunc": "sum"},
         ]
 
+        # ✅ UNA sola columna "Group"
         gridOptions["groupDisplayType"] = "singleColumn"
-        gridOptions["groupDefaultExpanded"] = 1
+        gridOptions["groupDefaultExpanded"] = 0
         gridOptions["autoGroupColumnDef"] = {
             "headerName": "Group",
             "minWidth": 260,
             "pinned": "left",
             "cellRendererParams": {"suppressCount": False},
         }
+
+        # ✅ Limpia encabezados sum()/last()
         gridOptions["suppressAggFuncInHeader"] = True
 
         meses_key = "-".join(meses_sel)
@@ -846,6 +921,7 @@ def seccion_analisis_por_clasificacion(
             theme="streamlit",
             key=grid_key
         )
+
 
 def agrid_ingreso_con_totales(df):
     df = df.copy()
@@ -3187,6 +3263,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
