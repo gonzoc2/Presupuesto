@@ -1244,7 +1244,6 @@ else:
         # Ejecutar
         resumen_empresa(df_ppt, df_real)
     elif selected == "PPT YTD":
-
         def tabla_ppt_ytd(df_ppt):
             meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
 
@@ -1259,12 +1258,13 @@ else:
             meses_sel = st.multiselect(
                 "Selecciona mes(es)",
                 options=meses_disponibles,
-                default=meses_disponibles[-1:], 
+                default=meses_disponibles[-1:],
                 key="ppt_ytd_meses"
             )
             if not meses_sel:
                 st.error("Selecciona por lo menos un mes.")
                 return None
+
             orden = {m: i for i, m in enumerate(meses_ordenados)}
             meses_calc = sorted(list(set(meses_sel)), key=lambda m: orden.get(m, 999))
             mes_corte = meses_calc[-1]
@@ -1272,7 +1272,7 @@ else:
             resumen_proyectos = {
                 nombre: estado_resultado(
                     df_local,
-                    meses_calc,            
+                    meses_calc,
                     nombre,
                     [str(codigo)],
                     list_pro
@@ -1314,11 +1314,13 @@ else:
             ratios = {"Margen U.B. %", "Margen U.O. %", "Margen EBIT %", "Margen EBT %"}
 
             def fmt_money(x):
-                if pd.isna(x): return ""
+                if pd.isna(x):
+                    return ""
                 return f"${float(x):,.0f}"
 
             def fmt_pct(x):
-                if pd.isna(x): return ""
+                if pd.isna(x):
+                    return ""
                 return f"{float(x)*100:,.2f}%"
 
             df_fmt = df_tabla.copy()
@@ -1351,6 +1353,7 @@ else:
 
             tabla_html = styler.to_html()
 
+            # ✅ HTML con fondo blanco en TODA la tabla/celdas
             components.html(
                 f"""
                 <style>
@@ -1359,27 +1362,33 @@ else:
                         overflow-x: auto;
                         border-radius: 8px;
                         font-family: 'Arial', serif;
+                        background-color: #ffffff;
                     }}
                     .ppt-ytd-wrap table {{
                         border-collapse: collapse;
                         width: max-content;
                         min-width: 100%;
+                        background-color: #ffffff;
                     }}
-                    .ppt-ytd-wrap th, .ppt-ytd-wrap td {{
+                    .ppt-ytd-wrap th,
+                    .ppt-ytd-wrap td {{
                         border: 1px solid #d0d0d0;
                         white-space: nowrap;
+                        background-color: #ffffff;   /* 🔥 CLAVE */
                     }}
                     .ppt-ytd-wrap th:first-child,
                     .ppt-ytd-wrap td:first-child {{
                         position: sticky;
                         left: 0;
                         z-index: 3;
-                        background: #ffffff;
+                        background-color: #ffffff;
                     }}
                     .ppt-ytd-wrap thead th {{
                         position: sticky;
                         top: 0;
                         z-index: 4;
+                        background-color: #00112B;
+                        color: white;
                     }}
                 </style>
 
@@ -1390,6 +1399,7 @@ else:
                 height=600,
                 scrolling=True
             )
+
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df_tabla.to_excel(writer, index=False, sheet_name="Resumen")
@@ -3412,6 +3422,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
