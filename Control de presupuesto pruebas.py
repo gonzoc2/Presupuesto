@@ -626,6 +626,9 @@ def seccion_analisis_por_clasificacion(
             return
 
         proy = [str(x).strip() for x in proyecto_codigo]
+        excluir_proyectos = {"8002", "8003", "8004"}
+        if clasificacion_nombre in ["COSS", "G.ADMN"]:
+            proy = [p for p in proy if str(p).strip() not in excluir_proyectos]
 
         # ---------------- PPT SEL ----------------
         df_ppt_sel = df_ppt[
@@ -759,8 +762,6 @@ def seccion_analisis_por_clasificacion(
             "PPT %", "REAL %", "%Ingresos"
         ]].copy()
 
-        # ✅ Para poder calcular % correctos en grupo, agregamos ingresos por fila (mismos para todas)
-        # No cambia tu lógica: solo habilita que el grupo sume ingresos y calcule ratios.
         df_out["ING_PPT"] = float(ingreso_ppt_sel or 0.0)
         df_out["ING_REAL"] = float(ingreso_real_sel or 0.0)
 
@@ -785,7 +786,6 @@ def seccion_analisis_por_clasificacion(
             }
         """)
 
-        # ✅ DIF % correcto para GRUPO: (REAL_total / PPT_total - 1) * 100
         dif_pct_value_getter = JsCode("""
             function(params){
                 if (params.node && params.node.group) {
@@ -799,7 +799,6 @@ def seccion_analisis_por_clasificacion(
             }
         """)
 
-        # ✅ PPT % correcto para GRUPO: PPT_total / ING_PPT_total
         ppt_pct_value_getter = JsCode("""
             function(params){
                 if (params.node && params.node.group) {
@@ -813,7 +812,6 @@ def seccion_analisis_por_clasificacion(
             }
         """)
 
-        # ✅ REAL % correcto para GRUPO: REAL_total / ING_REAL_total
         real_pct_value_getter = JsCode("""
             function(params){
                 if (params.node && params.node.group) {
@@ -827,7 +825,6 @@ def seccion_analisis_por_clasificacion(
             }
         """)
 
-        # ✅ %Ingresos correcto para GRUPO: DIF_NOM_total / ING_REAL_total
         ingresos_pct_value_getter = JsCode("""
             function(params){
                 if (params.node && params.node.group) {
@@ -856,10 +853,8 @@ def seccion_analisis_por_clasificacion(
 
         gridOptions["columnDefs"] = [
             {"field": group_col, "rowGroup": True, "hide": True},
-
             {"field": detalle_col, "headerName": "Cuenta", "minWidth": 320},
 
-            # MXN sumables
             {"field": "PPT NOM", "headerName": "PPT NOM", "type": ["numericColumn"], "aggFunc": "sum",
              "valueFormatter": currency_formatter, "cellStyle": {"textAlign": "right"}},
 
@@ -869,7 +864,6 @@ def seccion_analisis_por_clasificacion(
             {"field": "DIF NOM", "headerName": "DIF NOM", "type": ["numericColumn"], "aggFunc": "sum",
              "valueFormatter": currency_formatter, "cellStyle": {"textAlign": "right"}},
 
-            # % calculados correctamente en grupo
             {"field": "DIF %", "headerName": "DIF %", "type": ["numericColumn"],
              "valueGetter": dif_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": dif_pct_color},
 
@@ -882,12 +876,10 @@ def seccion_analisis_por_clasificacion(
             {"field": "%Ingresos", "headerName": "%Ingresos", "type": ["numericColumn"],
              "valueGetter": ingresos_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
 
-            # ocultos para cálculo de grupo
             {"field": "ING_PPT", "hide": True, "aggFunc": "sum"},
             {"field": "ING_REAL", "hide": True, "aggFunc": "sum"},
         ]
 
-        # ✅ UNA sola columna "Group"
         gridOptions["groupDisplayType"] = "singleColumn"
         gridOptions["groupDefaultExpanded"] = 0
         gridOptions["autoGroupColumnDef"] = {
@@ -897,7 +889,6 @@ def seccion_analisis_por_clasificacion(
             "cellRendererParams": {"suppressCount": False},
         }
 
-        # ✅ Limpia encabezados sum()/last()
         gridOptions["suppressAggFuncInHeader"] = True
 
         meses_key = "-".join(meses_sel)
@@ -3474,6 +3465,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
