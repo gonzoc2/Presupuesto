@@ -12,7 +12,7 @@ from urllib.parse import urlparse, parse_qs
 import streamlit.components.v1 as components
 import unicodedata
 import re
-import inspect
+
 
 
 st.set_page_config(
@@ -535,44 +535,17 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
 
 
 
-def ejecutar_funcion(funcion, df, meses, codigo_pro, pro, lista_proyectos=None, **kwargs):
-    """
-    Ejecuta funciones tipo ingreso/coss/gadmn/oh/patio/gasto_fin/ingreso_fin.
-    - Si la función regresa tupla -> toma el primer elemento como monto y el segundo como 'mal' si existe.
-    - Si la función requiere lista_proyectos -> se la pasa.
-    """
-    lista_proyectos = lista_proyectos or []
-    sig = inspect.signature(funcion)
-    params = sig.parameters
-
-    # Arma kwargs dinámicos
-    call_kwargs = {}
-    if "lista_proyectos" in params:
-        call_kwargs["lista_proyectos"] = lista_proyectos
-    # permite extras como categorias_flex_com
-    call_kwargs.update({k: v for k, v in kwargs.items() if k in params})
-
-    out = funcion(df, meses, codigo_pro, pro, **call_kwargs)
-
-    if isinstance(out, tuple):
-        monto = float(out[0] or 0.0)
-        mal = float(out[1] or 0.0) if len(out) > 1 else 0.0
-        return monto, mal
-    else:
-        return float(out or 0.0), 0.0
 def seccion_analisis_especial_porcentual(
-    df_ppt, df_real, ingreso_func,
+    df_ppt, df_real, ingreso,
     meses_seleccionado, proyecto_codigo, proyecto_nombre,
-    ceco_codigo, ceco_nombre,
-    funcion, nombre_funcion,
-    lista_proyectos,
-    **kwargs_funcion
+    funcion, nombre_funcion
 ):
     with st.expander(f"{nombre_funcion.upper()}"):
 
-        meses_completos = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
+        meses_completos = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.",
+                           "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
         orden = {m: i for i, m in enumerate(meses_completos)}
-        meses_sel = sorted(list(set(meses_seleccionado)), key=lambda x: orden.get(x, 999))
+        meses_sel = sorted(set(meses_seleccionado), key=lambda x: orden.get(x, 999))
 
         if not meses_sel:
             st.error("Selecciona por lo menos un mes.")
@@ -580,31 +553,34 @@ def seccion_analisis_especial_porcentual(
 
         proy = [str(x).strip() for x in proyecto_codigo]
 
-        # ✅ BASE IGUAL A ESTADO DE RESULTADOS (sin filtro CECO)
-        df_ppt_sel = df_ppt[
-            (df_ppt["Mes_A"].isin(meses_sel)) &
-            (df_ppt["Proyecto_A"].astype(str).isin(proy))
-        ].copy()
+        # 🔑 ESGARI = TODOS LOS PROYECTOS
+        if proyecto_nombre == "ESGARI":
+            df_ppt_sel = df_ppt[df_ppt["Mes_A"].isin(meses_sel)].copy()
+            df_real_sel = df_real[df_real["Mes_A"].isin(meses_sel)].copy()
+        else:
+            df_ppt_sel = df_ppt[
+                (df_ppt["Mes_A"].isin(meses_sel)) &
+                (df_ppt["Proyecto_A"].astype(str).isin(proy))
+            ].copy()
 
-        df_real_sel = df_real[
-            (df_real["Mes_A"].isin(meses_sel)) &
-            (df_real["Proyecto_A"].astype(str).isin(proy))
-        ].copy()
+            df_real_sel = df_real[
+                (df_real["Mes_A"].isin(meses_sel)) &
+                (df_real["Proyecto_A"].astype(str).isin(proy))
+            ].copy()
 
-        # --- NOMINALES (acepta tuplas tipo (monto, mal)) ---
-        ppt_nom, ppt_mal = ejecutar_funcion(funcion, df_ppt_sel, meses_sel, proy, proyecto_nombre, lista_proyectos, **kwargs_funcion)
-        real_nom, real_mal = ejecutar_funcion(funcion, df_real_sel, meses_sel, proy, proyecto_nombre, lista_proyectos, **kwargs_funcion)
+        # ---------- CÁLCULOS ----------
+        ppt_nom = float(funcion(df_ppt_sel, meses_sel, proy, proyecto_nombre) or 0)
+        real_nom = float(funcion(df_real_sel, meses_sel, proy, proyecto_nombre) or 0)
 
         dif_nom = real_nom - ppt_nom
-        dif_pct = (((real_nom / ppt_nom) - 1) * 100) if ppt_nom != 0 else 0.0
+        dif_pct = ((real_nom / ppt_nom - 1) * 100) if ppt_nom != 0 else 0
 
-        # ✅ INGRESOS con ingreso_pro (tu función ingreso())
-        ingreso_ppt, _ = ejecutar_funcion(ingreso_func, df_ppt_sel, meses_sel, proy, proyecto_nombre, lista_proyectos)
-        ingreso_real, _ = ejecutar_funcion(ingreso_func, df_real_sel, meses_sel, proy, proyecto_nombre, lista_proyectos)
+        ingreso_ppt = float(ingreso(df_ppt_sel, meses_sel, proy, proyecto_nombre) or 0)
+        ingreso_real = float(ingreso(df_real_sel, meses_sel, proy, proyecto_nombre) or 0)
 
-        ppt_pct = (ppt_nom / ingreso_ppt * 100) if ingreso_ppt != 0 else 0.0
-        real_pct = (real_nom / ingreso_real * 100) if ingreso_real != 0 else 0.0
-        dif_s_ing = (dif_nom / ingreso_real * 100) if ingreso_real != 0 else 0.0
+        ppt_pct = (ppt_nom / ingreso_ppt * 100) if ingreso_ppt else 0
+        real_pct = (real_nom / ingreso_real * 100) if ingreso_real else 0
+        dif_s_ing = (dif_nom / ingreso_real * 100) if ingreso_real else 0
 
         df_out = pd.DataFrame([{
             "PPT NOM": ppt_nom,
@@ -613,45 +589,32 @@ def seccion_analisis_especial_porcentual(
             "DIF %": round(dif_pct, 2),
             "PPT %": round(ppt_pct, 2),
             "REAL %": round(real_pct, 2),
-            "%Ingresos": round(dif_s_ing, 2),
-            "MAL PPT": ppt_mal,
-            "MAL REAL": real_mal
+            "%Ingresos": round(dif_s_ing, 2)
         }])
 
-        def resaltar(row):
-            styles = [""] * len(row)
-            cols = list(row.index)
-            if "DIF %" in cols:
-                j = cols.index("DIF %")
-                v = float(row["DIF %"]) if pd.notnull(row["DIF %"]) else 0.0
-                styles[j] = "background-color:#FF0000;color:white;font-weight:800;" if v > 10 else "background-color:#92D050;color:black;font-weight:800;"
-            return styles
-
         st.dataframe(
-            df_out.style.apply(resaltar, axis=1).format({
+            df_out.style.format({
                 "PPT NOM": "${:,.2f}",
                 "REAL NOM": "${:,.2f}",
                 "DIF NOM": "${:,.2f}",
                 "DIF %": "{:.2f}%",
                 "PPT %": "{:.2f}%",
                 "REAL %": "{:.2f}%",
-                "%Ingresos": "{:.2f}%",
-                "MAL PPT": "${:,.2f}",
-                "MAL REAL": "${:,.2f}",
+                "%Ingresos": "{:.2f}%"
             }),
             use_container_width=True
         )
 def seccion_analisis_por_clasificacion(
-    df_ppt, df_real, ingreso_func,
+    df_ppt, df_real, ingreso,
     meses_seleccionado, proyecto_codigo, proyecto_nombre,
-    clasificacion_nombre, ceco_codigo, ceco_nombre,
-    lista_proyectos
+    clasificacion_nombre
 ):
     with st.expander(clasificacion_nombre):
 
-        meses_completos = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
+        meses_completos = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.",
+                           "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
         orden = {m: i for i, m in enumerate(meses_completos)}
-        meses_sel = sorted(list(set(meses_seleccionado)), key=lambda x: orden.get(x, 999))
+        meses_sel = sorted(set(meses_seleccionado), key=lambda x: orden.get(x, 999))
 
         if not meses_sel:
             st.error("Selecciona por lo menos un mes.")
@@ -659,62 +622,59 @@ def seccion_analisis_por_clasificacion(
 
         proy = [str(x).strip() for x in proyecto_codigo]
 
-        # ✅ BASE IGUAL A ESTADO DE RESULTADOS (sin CECO)
-        df_ppt_sel = df_ppt[
-            (df_ppt["Mes_A"].isin(meses_sel)) &
-            (df_ppt["Proyecto_A"].astype(str).isin(proy))
-        ].copy()
+        # 🔑 ESGARI = TODOS LOS PROYECTOS
+        if proyecto_nombre == "ESGARI":
+            df_ppt_sel = df_ppt[df_ppt["Mes_A"].isin(meses_sel)].copy()
+            df_real_sel = df_real[df_real["Mes_A"].isin(meses_sel)].copy()
+        else:
+            df_ppt_sel = df_ppt[
+                (df_ppt["Mes_A"].isin(meses_sel)) &
+                (df_ppt["Proyecto_A"].astype(str).isin(proy))
+            ].copy()
 
-        df_real_sel = df_real[
-            (df_real["Mes_A"].isin(meses_sel)) &
-            (df_real["Proyecto_A"].astype(str).isin(proy))
-        ].copy()
+            df_real_sel = df_real[
+                (df_real["Mes_A"].isin(meses_sel)) &
+                (df_real["Proyecto_A"].astype(str).isin(proy))
+            ].copy()
 
-        # ✅ INGRESOS con ingreso_pro
-        ingreso_ppt_sel, _ = ejecutar_funcion(ingreso_func, df_ppt_sel, meses_sel, proy, proyecto_nombre, lista_proyectos)
-        ingreso_real_sel, _ = ejecutar_funcion(ingreso_func, df_real_sel, meses_sel, proy, proyecto_nombre, lista_proyectos)
+        ingreso_ppt_sel = float(ingreso(df_ppt_sel, meses_sel, proy, proyecto_nombre) or 0)
+        ingreso_real_sel = float(ingreso(df_real_sel, meses_sel, proy, proyecto_nombre) or 0)
 
-        # Filtra clasificación
-        df_ppt_cla = df_ppt_sel[(df_ppt_sel["Categoria_A"] != "INGRESO") & (df_ppt_sel["Clasificacion_A"] == clasificacion_nombre)].copy()
-        df_real_cla = df_real_sel[(df_real_sel["Categoria_A"] != "INGRESO") & (df_real_sel["Clasificacion_A"] == clasificacion_nombre)].copy()
+        df_ppt_sel = df_ppt_sel[
+            (df_ppt_sel["Categoria_A"] != "INGRESO") &
+            (df_ppt_sel["Clasificacion_A"] == clasificacion_nombre)
+        ]
 
-        ppt_cla_nom = df_ppt_cla.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
-        real_cla_nom = df_real_cla.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
+        df_real_sel = df_real_sel[
+            (df_real_sel["Categoria_A"] != "INGRESO") &
+            (df_real_sel["Clasificacion_A"] == clasificacion_nombre)
+        ]
 
-        ppt_cla_nom["PPT %"] = np.where(ingreso_ppt_sel != 0, (ppt_cla_nom["Neto_A"] / ingreso_ppt_sel) * 100, 0.0)
-        real_cla_nom["REAL %"] = np.where(ingreso_real_sel != 0, (real_cla_nom["Neto_A"] / ingreso_real_sel) * 100, 0.0)
+        ppt = df_ppt_sel.groupby("Categoria_A", as_index=False)["Neto_A"].sum()
+        real = df_real_sel.groupby("Categoria_A", as_index=False)["Neto_A"].sum()
 
-        df_cla = ppt_cla_nom.merge(
-            real_cla_nom[["Clasificacion_A", "Neto_A", "REAL %"]].rename(columns={"Neto_A": "REAL NOM"}),
-            on="Clasificacion_A",
-            how="outer"
-        ).rename(columns={"Neto_A": "PPT NOM"}).fillna(0)
+        df = ppt.merge(real, on="Categoria_A", how="outer", suffixes=(" PPT", " REAL")).fillna(0)
 
-        df_cla["DIF NOM"] = df_cla["REAL NOM"] - df_cla["PPT NOM"]
-        df_cla["DIF %"] = np.where(df_cla["PPT NOM"] != 0, ((df_cla["REAL NOM"] / df_cla["PPT NOM"]) - 1) * 100, 0.0)
-        df_cla["%Ingresos"] = np.where(ingreso_real_sel != 0, (df_cla["DIF NOM"] / ingreso_real_sel) * 100, 0.0)
-
-        def resaltar_dif_pct(row):
-            styles = [""] * len(row)
-            cols = list(row.index)
-            if "DIF %" in cols:
-                j = cols.index("DIF %")
-                v = float(row["DIF %"]) if pd.notnull(row["DIF %"]) else 0.0
-                styles[j] = "background-color:#FF0000;color:white;font-weight:800;" if v > 10 else "background-color:#92D050;color:black;font-weight:800;"
-            return styles
+        df["DIF NOM"] = df["Neto_A REAL"] - df["Neto_A PPT"]
+        df["DIF %"] = np.where(
+            df["Neto_A PPT"] != 0,
+            (df["Neto_A REAL"] / df["Neto_A PPT"] - 1) * 100,
+            0
+        )
+        df["%Ingresos"] = np.where(
+            ingreso_real_sel != 0,
+            (df["DIF NOM"] / ingreso_real_sel) * 100,
+            0
+        )
 
         st.dataframe(
-            df_cla.set_index("Clasificacion_A").style
-                .apply(resaltar_dif_pct, axis=1)
-                .format({
-                    "PPT NOM": "${:,.2f}",
-                    "REAL NOM": "${:,.2f}",
-                    "DIF NOM": "${:,.2f}",
-                    "DIF %": "{:.2f}%",
-                    "PPT %": "{:.2f}%",
-                    "REAL %": "{:.2f}%",
-                    "%Ingresos": "{:.2f}%"
-                }),
+            df.style.format({
+                "Neto_A PPT": "${:,.2f}",
+                "Neto_A REAL": "${:,.2f}",
+                "DIF NOM": "${:,.2f}",
+                "DIF %": "{:.2f}%",
+                "%Ingresos": "{:.2f}%"
+            }),
             use_container_width=True
         )
 
@@ -2599,18 +2559,42 @@ else:
         mostrar_meses_ppt(df_ppt)
         
     elif selected == "Variaciones":
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
+
         meses_seleccionado = filtro_meses(col1, df_ppt)
         proyecto_codigo, proyecto_nombre = filtro_pro(col2)
-        ceco_codigo, ceco_nombre = filtro_ceco(col3)
 
-        seccion_analisis_por_clasificacion(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, "COSS", ceco_codigo, ceco_nombre, lista_proyectos=list_pro)
-        seccion_analisis_por_clasificacion(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, "G.ADMN", ceco_codigo, ceco_nombre, lista_proyectos=list_pro)
-        seccion_analisis_especial_porcentual(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, ceco_codigo, ceco_nombre, patio, "Patio", lista_proyectos=list_pro)
+        seccion_analisis_por_clasificacion(
+            df_ppt, df_real, ingreso,
+            meses_seleccionado, proyecto_codigo, proyecto_nombre,
+            "COSS"
+        )
+
+        seccion_analisis_por_clasificacion(
+            df_ppt, df_real, ingreso,
+            meses_seleccionado, proyecto_codigo, proyecto_nombre,
+            "G.ADMN"
+        )
+
+        seccion_analisis_especial_porcentual(
+            df_ppt, df_real, ingreso,
+            meses_seleccionado, proyecto_codigo, proyecto_nombre,
+            patio, "Patio"
+        )
 
         if st.session_state["rol"] == "admin":
-            seccion_analisis_por_clasificacion(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, "GASTOS FINANCIEROS", ceco_codigo, ceco_nombre, lista_proyectos=list_pro)
-            seccion_analisis_especial_porcentual(df_ppt, df_real, ingreso, meses_seleccionado, proyecto_codigo, proyecto_nombre, ceco_codigo, ceco_nombre, oh, "OH", lista_proyectos=list_pro)
+            seccion_analisis_por_clasificacion(
+                df_ppt, df_real, ingreso,
+                meses_seleccionado, proyecto_codigo, proyecto_nombre,
+                "GASTOS FINANCIEROS"
+            )
+
+            seccion_analisis_especial_porcentual(
+                df_ppt, df_real, ingreso,
+                meses_seleccionado, proyecto_codigo, proyecto_nombre,
+                oh, "OH"
+            )
+
 
     elif selected == "Comparativa":
 
@@ -3254,6 +3238,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
