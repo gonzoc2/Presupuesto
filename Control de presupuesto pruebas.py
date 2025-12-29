@@ -12,6 +12,7 @@ from urllib.parse import urlparse, parse_qs
 import streamlit.components.v1 as components
 import unicodedata
 import re
+import inspect
 
 
 st.set_page_config(
@@ -534,12 +535,38 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
 
 
 
+def ejecutar_funcion(funcion, df, meses, codigo_pro, pro, lista_proyectos=None, **kwargs):
+    """
+    Ejecuta funciones tipo ingreso/coss/gadmn/oh/patio/gasto_fin/ingreso_fin.
+    - Si la función regresa tupla -> toma el primer elemento como monto y el segundo como 'mal' si existe.
+    - Si la función requiere lista_proyectos -> se la pasa.
+    """
+    lista_proyectos = lista_proyectos or []
+    sig = inspect.signature(funcion)
+    params = sig.parameters
+
+    # Arma kwargs dinámicos
+    call_kwargs = {}
+    if "lista_proyectos" in params:
+        call_kwargs["lista_proyectos"] = lista_proyectos
+    # permite extras como categorias_flex_com
+    call_kwargs.update({k: v for k, v in kwargs.items() if k in params})
+
+    out = funcion(df, meses, codigo_pro, pro, **call_kwargs)
+
+    if isinstance(out, tuple):
+        monto = float(out[0] or 0.0)
+        mal = float(out[1] or 0.0) if len(out) > 1 else 0.0
+        return monto, mal
+    else:
+        return float(out or 0.0), 0.0
 def seccion_analisis_especial_porcentual(
-    df_ppt, df_real, ingreso,
+    df_ppt, df_real, ingreso_func,
     meses_seleccionado, proyecto_codigo, proyecto_nombre,
     ceco_codigo, ceco_nombre,
     funcion, nombre_funcion,
     lista_proyectos,
+    **kwargs_funcion
 ):
     with st.expander(f"{nombre_funcion.upper()}"):
 
@@ -550,58 +577,34 @@ def seccion_analisis_especial_porcentual(
         if not meses_sel:
             st.error("Selecciona por lo menos un mes.")
             return
+
         proy = [str(x).strip() for x in proyecto_codigo]
-        cecos = [str(x).strip() for x in ceco_codigo]
 
-        # ---------- Copias + limpieza base (NO cambia lógica) ----------
-        df_ppt_sel = df_ppt.copy()
-        df_real_sel = df_real.copy()
-
-        for df in (df_ppt_sel, df_real_sel):
-            df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
-            df["Proyecto_A"] = df["Proyecto_A"].astype(str).str.strip()
-            df["CeCo_A"] = df["CeCo_A"].astype(str).str.strip()
-            df["Clasificacion_A"] = df["Clasificacion_A"].astype(str).str.strip()
-            df["Categoria_A"] = df["Categoria_A"].astype(str).str.strip()
-            df["Cuenta_Nombre_A"] = df["Cuenta_Nombre_A"].astype(str).str.strip()
-            df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
-
-        # ✅ Se mantiene tu filtro CeCo/Proyecto/Mes para el detalle visual
-        df_ppt_sel = df_ppt_sel[
-            (df_ppt_sel["Mes_A"].isin(meses_sel)) &
-            (df_ppt_sel["Proyecto_A"].isin(proy)) &
-            (df_ppt_sel["CeCo_A"].isin(cecos))
+        # ✅ BASE IGUAL A ESTADO DE RESULTADOS (sin filtro CECO)
+        df_ppt_sel = df_ppt[
+            (df_ppt["Mes_A"].isin(meses_sel)) &
+            (df_ppt["Proyecto_A"].astype(str).isin(proy))
         ].copy()
 
-        df_real_sel = df_real_sel[
-            (df_real_sel["Mes_A"].isin(meses_sel)) &
-            (df_real_sel["Proyecto_A"].isin(proy)) &
-            (df_real_sel["CeCo_A"].isin(cecos))
+        df_real_sel = df_real[
+            (df_real["Mes_A"].isin(meses_sel)) &
+            (df_real["Proyecto_A"].astype(str).isin(proy))
         ].copy()
 
-        # ---------- INGRESOS (tu función global) ----------
-        ing_ppt = float(ingreso(df_ppt_sel, meses_sel, proy, proyecto_nombre) or 0.0)
-        ing_real = float(ingreso(df_real_sel, meses_sel, proy, proyecto_nombre) or 0.0)
-        if funcion.__name__ == "coss":
-            ppt_nom = float((funcion(df_ppt_sel, meses_sel, proy, proyecto_nombre, lista_proyectos) or (0.0, 0.0))[0])
-            real_nom = float((funcion(df_real_sel, meses_sel, proy, proyecto_nombre, lista_proyectos) or (0.0, 0.0))[0])
-
-        elif funcion.__name__ == "gadmn":
-            ppt_nom = float((funcion(df_ppt_sel, meses_sel, proy, proyecto_nombre, lista_proyectos) or (0.0, 0.0))[0])
-            real_nom = float((funcion(df_real_sel, meses_sel, proy, proyecto_nombre, lista_proyectos) or (0.0, 0.0))[0])
-
-        else:
-            # Mantén tu lógica para cualquier otra función (que devuelva número)
-            ppt_nom = float(funcion(df_ppt_sel, meses_sel, proy, proyecto_nombre) or 0.0)
-            real_nom = float(funcion(df_real_sel, meses_sel, proy, proyecto_nombre) or 0.0)
+        # --- NOMINALES (acepta tuplas tipo (monto, mal)) ---
+        ppt_nom, ppt_mal = ejecutar_funcion(funcion, df_ppt_sel, meses_sel, proy, proyecto_nombre, lista_proyectos, **kwargs_funcion)
+        real_nom, real_mal = ejecutar_funcion(funcion, df_real_sel, meses_sel, proy, proyecto_nombre, lista_proyectos, **kwargs_funcion)
 
         dif_nom = real_nom - ppt_nom
         dif_pct = (((real_nom / ppt_nom) - 1) * 100) if ppt_nom != 0 else 0.0
 
-        # ✅ % CORRECTOS (los que tú comparas manualmente)
-        ppt_pct = (ppt_nom / ing_ppt * 100) if ing_ppt != 0 else 0.0
-        real_pct = (real_nom / ing_real * 100) if ing_real != 0 else 0.0
-        s_ing = (dif_nom / ing_real * 100) if ing_real != 0 else 0.0
+        # ✅ INGRESOS con ingreso_pro (tu función ingreso())
+        ingreso_ppt, _ = ejecutar_funcion(ingreso_func, df_ppt_sel, meses_sel, proy, proyecto_nombre, lista_proyectos)
+        ingreso_real, _ = ejecutar_funcion(ingreso_func, df_real_sel, meses_sel, proy, proyecto_nombre, lista_proyectos)
+
+        ppt_pct = (ppt_nom / ingreso_ppt * 100) if ingreso_ppt != 0 else 0.0
+        real_pct = (real_nom / ingreso_real * 100) if ingreso_real != 0 else 0.0
+        dif_s_ing = (dif_nom / ingreso_real * 100) if ingreso_real != 0 else 0.0
 
         df_out = pd.DataFrame([{
             "PPT NOM": ppt_nom,
@@ -610,7 +613,9 @@ def seccion_analisis_especial_porcentual(
             "DIF %": round(dif_pct, 2),
             "PPT %": round(ppt_pct, 2),
             "REAL %": round(real_pct, 2),
-            "%Ingresos": round(s_ing, 2)
+            "%Ingresos": round(dif_s_ing, 2),
+            "MAL PPT": ppt_mal,
+            "MAL REAL": real_mal
         }])
 
         def resaltar(row):
@@ -623,26 +628,24 @@ def seccion_analisis_especial_porcentual(
             return styles
 
         st.dataframe(
-            df_out.style
-                .apply(resaltar, axis=1)
-                .format({
-                    "PPT NOM": "${:,.2f}",
-                    "REAL NOM": "${:,.2f}",
-                    "DIF NOM": "${:,.2f}",
-                    "DIF %": "{:.2f}%",
-                    "PPT %": "{:.2f}%",
-                    "REAL %": "{:.2f}%",
-                    "%Ingresos": "{:.2f}%"
-                }),
+            df_out.style.apply(resaltar, axis=1).format({
+                "PPT NOM": "${:,.2f}",
+                "REAL NOM": "${:,.2f}",
+                "DIF NOM": "${:,.2f}",
+                "DIF %": "{:.2f}%",
+                "PPT %": "{:.2f}%",
+                "REAL %": "{:.2f}%",
+                "%Ingresos": "{:.2f}%",
+                "MAL PPT": "${:,.2f}",
+                "MAL REAL": "${:,.2f}",
+            }),
             use_container_width=True
         )
-
-
 def seccion_analisis_por_clasificacion(
-    df_ppt, df_real, ingreso,
+    df_ppt, df_real, ingreso_func,
     meses_seleccionado, proyecto_codigo, proyecto_nombre,
     clasificacion_nombre, ceco_codigo, ceco_nombre,
-    lista_proyectos,
+    lista_proyectos
 ):
     with st.expander(clasificacion_nombre):
 
@@ -655,61 +658,37 @@ def seccion_analisis_por_clasificacion(
             return
 
         proy = [str(x).strip() for x in proyecto_codigo]
-        cecos = [str(x).strip() for x in ceco_codigo]
 
-        # ---------- Limpieza base ----------
-        df_ppt2 = df_ppt.copy()
-        df_real2 = df_real.copy()
-
-        for df in (df_ppt2, df_real2):
-            df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
-            df["Proyecto_A"] = df["Proyecto_A"].astype(str).str.strip()
-            df["CeCo_A"] = df["CeCo_A"].astype(str).str.strip()
-            df["Clasificacion_A"] = df["Clasificacion_A"].astype(str).str.strip()
-            df["Categoria_A"] = df["Categoria_A"].astype(str).str.strip()
-            df["Cuenta_Nombre_A"] = df["Cuenta_Nombre_A"].astype(str).str.strip()
-            df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
-
-        # ---------- Selecciones ----------
-        df_ppt_sel = df_ppt2[
-            (df_ppt2["Mes_A"].isin(meses_sel)) &
-            (df_ppt2["Proyecto_A"].isin(proy)) &
-            (df_ppt2["CeCo_A"].isin(cecos))
+        # ✅ BASE IGUAL A ESTADO DE RESULTADOS (sin CECO)
+        df_ppt_sel = df_ppt[
+            (df_ppt["Mes_A"].isin(meses_sel)) &
+            (df_ppt["Proyecto_A"].astype(str).isin(proy))
         ].copy()
 
-        df_real_sel = df_real2[
-            (df_real2["Mes_A"].isin(meses_sel)) &
-            (df_real2["Proyecto_A"].isin(proy)) &
-            (df_real2["CeCo_A"].isin(cecos))
+        df_real_sel = df_real[
+            (df_real["Mes_A"].isin(meses_sel)) &
+            (df_real["Proyecto_A"].astype(str).isin(proy))
         ].copy()
 
-        # ✅ Ingresos consistentes con tu función global
-        ingreso_ppt_sel = float(ingreso(df_ppt_sel, meses_sel, proy, proyecto_nombre) or 0.0)
-        ingreso_real_sel = float(ingreso(df_real_sel, meses_sel, proy, proyecto_nombre) or 0.0)
+        # ✅ INGRESOS con ingreso_pro
+        ingreso_ppt_sel, _ = ejecutar_funcion(ingreso_func, df_ppt_sel, meses_sel, proy, proyecto_nombre, lista_proyectos)
+        ingreso_real_sel, _ = ejecutar_funcion(ingreso_func, df_real_sel, meses_sel, proy, proyecto_nombre, lista_proyectos)
 
-        # ---------- Filtra NO ingreso + clasificación ----------
-        df_ppt_f = df_ppt_sel[(df_ppt_sel["Categoria_A"] != "INGRESO") & (df_ppt_sel["Clasificacion_A"] == clasificacion_nombre)].copy()
-        df_real_f = df_real_sel[(df_real_sel["Categoria_A"] != "INGRESO") & (df_real_sel["Clasificacion_A"] == clasificacion_nombre)].copy()
+        # Filtra clasificación
+        df_ppt_cla = df_ppt_sel[(df_ppt_sel["Categoria_A"] != "INGRESO") & (df_ppt_sel["Clasificacion_A"] == clasificacion_nombre)].copy()
+        df_real_cla = df_real_sel[(df_real_sel["Categoria_A"] != "INGRESO") & (df_real_sel["Clasificacion_A"] == clasificacion_nombre)].copy()
 
-        # ---------- Agrupaciones ----------
-        ppt_cla_nom = df_ppt_f.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
-        ppt_cat_nom = df_ppt_f.groupby(["Clasificacion_A", "Categoria_A"], as_index=False)["Neto_A"].sum()
-        ppt_cta_nom = df_ppt_f.groupby(["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"], as_index=False)["Neto_A"].sum()
+        ppt_cla_nom = df_ppt_cla.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
+        real_cla_nom = df_real_cla.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
 
-        real_cla_nom = df_real_f.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
-        real_cat_nom = df_real_f.groupby(["Clasificacion_A", "Categoria_A"], as_index=False)["Neto_A"].sum()
-        real_cta_nom = df_real_f.groupby(["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"], as_index=False)["Neto_A"].sum()
-
-        # ✅ % CORRECTOS (vs INGRESOS)
         ppt_cla_nom["PPT %"] = np.where(ingreso_ppt_sel != 0, (ppt_cla_nom["Neto_A"] / ingreso_ppt_sel) * 100, 0.0)
         real_cla_nom["REAL %"] = np.where(ingreso_real_sel != 0, (real_cla_nom["Neto_A"] / ingreso_real_sel) * 100, 0.0)
 
-        # ---------- TABLA CLASIFICACION ----------
         df_cla = ppt_cla_nom.merge(
             real_cla_nom[["Clasificacion_A", "Neto_A", "REAL %"]].rename(columns={"Neto_A": "REAL NOM"}),
             on="Clasificacion_A",
             how="outer"
-        ).rename(columns={"Neto_A": "PPT NOM"}).fillna(0.0)
+        ).rename(columns={"Neto_A": "PPT NOM"}).fillna(0)
 
         df_cla["DIF NOM"] = df_cla["REAL NOM"] - df_cla["PPT NOM"]
         df_cla["DIF %"] = np.where(df_cla["PPT NOM"] != 0, ((df_cla["REAL NOM"] / df_cla["PPT NOM"]) - 1) * 100, 0.0)
@@ -737,173 +716,6 @@ def seccion_analisis_por_clasificacion(
                     "%Ingresos": "{:.2f}%"
                 }),
             use_container_width=True
-        )
-
-        # ---------- TABLA CUENTA (para AgGrid) ----------
-        ppt_cta_nom2 = ppt_cta_nom.rename(columns={"Neto_A": "PPT NOM"}).copy()
-        real_cta_nom2 = real_cta_nom.rename(columns={"Neto_A": "REAL NOM"}).copy()
-
-        # ✅ aquí calculamos % vs ingresos (NO vs categoría), para que cuadre con “manual”
-        ppt_cta_nom2["PPT %"] = np.where(ingreso_ppt_sel != 0, (ppt_cta_nom2["PPT NOM"] / ingreso_ppt_sel) * 100, 0.0)
-        real_cta_nom2["REAL %"] = np.where(ingreso_real_sel != 0, (real_cta_nom2["REAL NOM"] / ingreso_real_sel) * 100, 0.0)
-
-        df_cta = ppt_cta_nom2.merge(
-            real_cta_nom2[["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A", "REAL NOM", "REAL %"]],
-            on=["Clasificacion_A", "Categoria_A", "Cuenta_Nombre_A"],
-            how="outer"
-        ).fillna(0.0)
-
-        df_cta["DIF NOM"] = df_cta["REAL NOM"] - df_cta["PPT NOM"]
-        df_cta["DIF %"] = np.where(df_cta["PPT NOM"] != 0, ((df_cta["REAL NOM"] / df_cta["PPT NOM"]) - 1) * 100, 0.0)
-        df_cta["%Ingresos"] = np.where(ingreso_real_sel != 0, (df_cta["DIF NOM"] / ingreso_real_sel) * 100, 0.0)
-
-        # ---------- OUTPUT AGGRID ----------
-        df_out = df_cta[[
-            "Categoria_A", "Cuenta_Nombre_A",
-            "PPT NOM", "REAL NOM", "DIF NOM", "DIF %",
-            "PPT %", "REAL %", "%Ingresos"
-        ]].copy()
-
-        # ingresos ocultos para cálculo correcto por grupo
-        df_out["ING_PPT"] = float(ingreso_ppt_sel or 0.0)
-        df_out["ING_REAL"] = float(ingreso_real_sel or 0.0)
-
-        # ---------- AgGrid ----------
-        currency_formatter = JsCode("""
-            function(params) {
-                if (params.value === null || params.value === undefined) return '';
-                return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(params.value);
-            }
-        """)
-
-        pct_formatter = JsCode("""
-            function(params) {
-                if (params.value === null || params.value === undefined) return '';
-                return params.value.toFixed(2) + ' %';
-            }
-        """)
-
-        dif_pct_color = JsCode("""
-            function(params){
-                if (params.value === null || params.value === undefined) return { 'textAlign':'right' };
-                if (params.value > 10){
-                    return { 'backgroundColor': '#FF0000', 'color': 'white', 'fontWeight': '800', 'textAlign':'right' };
-                } else {
-                    return { 'backgroundColor': '#92D050', 'color': 'black', 'fontWeight': '800', 'textAlign':'right' };
-                }
-            }
-        """)
-
-        # ✅ getters de grupo (con agregados)
-        dif_pct_value_getter = JsCode("""
-            function(params){
-                if (params.node && params.node.group) {
-                    var agg = params.node.aggData || {};
-                    var ppt = agg["PPT NOM"] || 0;
-                    var real = agg["REAL NOM"] || 0;
-                    if (ppt === 0) return 0;
-                    return ((real / ppt) - 1) * 100;
-                }
-                return params.data ? params.data["DIF %"] : 0;
-            }
-        """)
-
-        ppt_pct_value_getter = JsCode("""
-            function(params){
-                if (params.node && params.node.group) {
-                    var agg = params.node.aggData || {};
-                    var ppt = agg["PPT NOM"] || 0;
-                    var ing = agg["ING_PPT"] || 0;
-                    if (ing === 0) return 0;
-                    return (ppt / ing) * 100;
-                }
-                return params.data ? params.data["PPT %"] : 0;
-            }
-        """)
-
-        real_pct_value_getter = JsCode("""
-            function(params){
-                if (params.node && params.node.group) {
-                    var agg = params.node.aggData || {};
-                    var real = agg["REAL NOM"] || 0;
-                    var ing = agg["ING_REAL"] || 0;
-                    if (ing === 0) return 0;
-                    return (real / ing) * 100;
-                }
-                return params.data ? params.data["REAL %"] : 0;
-            }
-        """)
-
-        ingresos_pct_value_getter = JsCode("""
-            function(params){
-                if (params.node && params.node.group) {
-                    var agg = params.node.aggData || {};
-                    var dif = agg["DIF NOM"] || 0;
-                    var ing = agg["ING_REAL"] || 0;
-                    if (ing === 0) return 0;
-                    return (dif / ing) * 100;
-                }
-                return params.data ? params.data["%Ingresos"] : 0;
-            }
-        """)
-
-        gb = GridOptionsBuilder.from_dataframe(df_out)
-        gb.configure_default_column(resizable=True, sortable=True, filter=True)
-
-        gridOptions = gb.build()
-        gridOptions["columnDefs"] = [
-            {"field": "Categoria_A", "rowGroup": True, "hide": True},
-
-            {"field": "Cuenta_Nombre_A", "headerName": "Cuenta", "minWidth": 320},
-
-            {"field": "PPT NOM", "headerName": "PPT NOM", "type": ["numericColumn"], "aggFunc": "sum",
-             "valueFormatter": currency_formatter, "cellStyle": {"textAlign": "right"}},
-
-            {"field": "REAL NOM", "headerName": "REAL NOM", "type": ["numericColumn"], "aggFunc": "sum",
-             "valueFormatter": currency_formatter, "cellStyle": {"textAlign": "right"}},
-
-            {"field": "DIF NOM", "headerName": "DIF NOM", "type": ["numericColumn"], "aggFunc": "sum",
-             "valueFormatter": currency_formatter, "cellStyle": {"textAlign": "right"}},
-
-            {"field": "DIF %", "headerName": "DIF %", "type": ["numericColumn"],
-             "valueGetter": dif_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": dif_pct_color},
-
-            {"field": "PPT %", "headerName": "PPT %", "type": ["numericColumn"],
-             "valueGetter": ppt_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
-
-            {"field": "REAL %", "headerName": "REAL %", "type": ["numericColumn"],
-             "valueGetter": real_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
-
-            {"field": "%Ingresos", "headerName": "%Ingresos", "type": ["numericColumn"],
-             "valueGetter": ingresos_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
-
-            {"field": "ING_PPT", "hide": True, "aggFunc": "sum"},
-            {"field": "ING_REAL", "hide": True, "aggFunc": "sum"},
-        ]
-
-        gridOptions["groupDisplayType"] = "singleColumn"
-        gridOptions["groupDefaultExpanded"] = 0
-        gridOptions["autoGroupColumnDef"] = {
-            "headerName": "Group",
-            "minWidth": 260,
-            "pinned": "left",
-            "cellRendererParams": {"suppressCount": False},
-        }
-        gridOptions["suppressAggFuncInHeader"] = True
-
-        meses_key = "-".join(meses_sel)
-        grid_key = f"agrid_mix_{clasificacion_nombre}_{'-'.join(proy)}_{'-'.join(cecos)}_{meses_key}"
-
-        AgGrid(
-            df_out,
-            gridOptions=gridOptions,
-            allow_unsafe_jscode=True,
-            enable_enterprise_modules=True,
-            height=520,
-            use_checkbox=False,
-            fit_columns_on_grid_load=True,
-            theme="streamlit",
-            key=grid_key
         )
 
 def agrid_ingreso_con_totales(df):
@@ -1215,12 +1027,6 @@ else:
                 }),
                 use_container_width=True
             )
-
-            with st.expander("Detalle COSS (Categoría → Cuenta)", expanded=False):
-                st.info("Aquí va tu AgGrid corporativo, cerrado por default.")
-
-            with st.expander("Detalle G. Adm (Categoría → Cuenta)", expanded=False):
-                st.info("Aquí va tu AgGrid corporativo, cerrado por default.")
 
             return df_res
 
@@ -3448,6 +3254,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
