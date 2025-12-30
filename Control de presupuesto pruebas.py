@@ -626,6 +626,9 @@ def seccion_analisis_por_clasificacion(
             return
 
         proy = [str(x).strip() for x in proyecto_codigo]
+        excluir_proyectos = {"8002", "8003", "8004"}
+        if clasificacion_nombre in ["COSS", "G.ADMN"]:
+            proy = [p for p in proy if str(p).strip() not in excluir_proyectos]
 
         # =========================
         # ✅ SOLO PARA COSS / G.ADMN: igualar a Estado de Resultado
@@ -3584,6 +3587,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
