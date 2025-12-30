@@ -626,9 +626,24 @@ def seccion_analisis_por_clasificacion(
             return
 
         proy = [str(x).strip() for x in proyecto_codigo]
-        excluir_proyectos = {"8002", "8003", "8004"}
-        if clasificacion_nombre in ["COSS", "G.ADMN"]:
-            proy = [p for p in proy if str(p).strip() not in excluir_proyectos]
+
+        # =========================
+        # ✅ SOLO PARA COSS / G.ADMN: igualar a Estado de Resultado
+        # (usa globals si existen)
+        # =========================
+        _usar_estado_resultado = clasificacion_nombre in ["COSS", "G.ADMN"]
+
+        _lista_proyectos = globals().get("lista_proyectos", None)
+        if _lista_proyectos is None:
+            _lista_proyectos = globals().get("LISTA_PROYECTOS", [])
+        if _lista_proyectos is None:
+            _lista_proyectos = []
+
+        _categorias_flex_com = globals().get("categorias_flex_com", None)
+        if _categorias_flex_com is None:
+            _categorias_flex_com = globals().get("CATEGORIAS_FLEX_COM", [])
+        if _categorias_flex_com is None:
+            _categorias_flex_com = []
 
         # ---------------- PPT SEL ----------------
         df_ppt_sel = df_ppt[
@@ -636,10 +651,54 @@ def seccion_analisis_por_clasificacion(
             (df_ppt["Proyecto_A"].astype(str).isin(proy))
         ].copy()
 
-        ingreso_ppt_sel = float(ingreso(df_ppt_sel, meses_sel, proy, proyecto_nombre) or 0.0)
+        # ✅ ingreso igual que Estado de Resultado (solo COSS/G.ADMN)
+        if _usar_estado_resultado:
+            ingreso_ppt_sel = float(ingreso(df_ppt, meses_sel, proyecto_codigo, proyecto_nombre) or 0.0)
+        else:
+            ingreso_ppt_sel = float(ingreso(df_ppt_sel, meses_sel, proy, proyecto_nombre) or 0.0)
 
         df_ppt_sel = df_ppt_sel[df_ppt_sel["Categoria_A"] != "INGRESO"]
         df_ppt_sel = df_ppt_sel[df_ppt_sel["Clasificacion_A"] == clasificacion_nombre]
+
+        # ✅ Ajuste para que NOM quede igual que Estado de Resultado (solo COSS/G.ADMN)
+        if _usar_estado_resultado:
+            if clasificacion_nombre == "COSS":
+                target_ppt, mal_ppt = coss(df_ppt, meses_sel, proyecto_codigo, proyecto_nombre, _lista_proyectos)
+            else:  # "G.ADMN"
+                target_ppt, mal_ppt = gadmn(
+                    df_ppt, meses_sel, proyecto_codigo, proyecto_nombre, _lista_proyectos,
+                    categorias_flex_com=_categorias_flex_com
+                )
+
+            base_sum = float(df_ppt_sel["Neto_A"].sum() or 0.0)
+
+            adj_rows = []
+
+            if abs(float(mal_ppt or 0.0)) > 1e-9:
+                adj_rows.append({
+                    "Mes_A": meses_sel[0],
+                    "Proyecto_A": "AJUSTE",
+                    "Clasificacion_A": clasificacion_nombre,
+                    "Categoria_A": "AJUSTE",
+                    "Cuenta_Nombre_A": "Mal clasificados (Estado Resultado)",
+                    "Neto_A": float(mal_ppt or 0.0),
+                    "ES_AJUSTE": True
+                })
+
+            residual = float(target_ppt or 0.0) - base_sum - float(mal_ppt or 0.0)
+            if abs(residual) > 1e-9:
+                adj_rows.append({
+                    "Mes_A": meses_sel[0],
+                    "Proyecto_A": "AJUSTE",
+                    "Clasificacion_A": clasificacion_nombre,
+                    "Categoria_A": "AJUSTE",
+                    "Cuenta_Nombre_A": "Ajuste Estado Resultado",
+                    "Neto_A": residual,
+                    "ES_AJUSTE": True
+                })
+
+            if adj_rows:
+                df_ppt_sel = pd.concat([df_ppt_sel, pd.DataFrame(adj_rows)], ignore_index=True)
 
         ppt_cla_nom = df_ppt_sel.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
         ppt_cat_nom = df_ppt_sel.groupby(["Clasificacion_A", "Categoria_A"], as_index=False)["Neto_A"].sum()
@@ -664,10 +723,54 @@ def seccion_analisis_por_clasificacion(
             (df_real["Proyecto_A"].astype(str).isin(proy))
         ].copy()
 
-        ingreso_real_sel = float(ingreso(df_real_sel, meses_sel, proy, proyecto_nombre) or 0.0)
+        # ✅ ingreso igual que Estado de Resultado (solo COSS/G.ADMN)
+        if _usar_estado_resultado:
+            ingreso_real_sel = float(ingreso(df_real, meses_sel, proyecto_codigo, proyecto_nombre) or 0.0)
+        else:
+            ingreso_real_sel = float(ingreso(df_real_sel, meses_sel, proy, proyecto_nombre) or 0.0)
 
         df_real_sel = df_real_sel[df_real_sel["Categoria_A"] != "INGRESO"]
         df_real_sel = df_real_sel[df_real_sel["Clasificacion_A"] == clasificacion_nombre]
+
+        # ✅ Ajuste para que NOM quede igual que Estado de Resultado (solo COSS/G.ADMN)
+        if _usar_estado_resultado:
+            if clasificacion_nombre == "COSS":
+                target_real, mal_real = coss(df_real, meses_sel, proyecto_codigo, proyecto_nombre, _lista_proyectos)
+            else:  # "G.ADMN"
+                target_real, mal_real = gadmn(
+                    df_real, meses_sel, proyecto_codigo, proyecto_nombre, _lista_proyectos,
+                    categorias_flex_com=_categorias_flex_com
+                )
+
+            base_sum_r = float(df_real_sel["Neto_A"].sum() or 0.0)
+
+            adj_rows_r = []
+
+            if abs(float(mal_real or 0.0)) > 1e-9:
+                adj_rows_r.append({
+                    "Mes_A": meses_sel[0],
+                    "Proyecto_A": "AJUSTE",
+                    "Clasificacion_A": clasificacion_nombre,
+                    "Categoria_A": "AJUSTE",
+                    "Cuenta_Nombre_A": "Mal clasificados (Estado Resultado)",
+                    "Neto_A": float(mal_real or 0.0),
+                    "ES_AJUSTE": True
+                })
+
+            residual_r = float(target_real or 0.0) - base_sum_r - float(mal_real or 0.0)
+            if abs(residual_r) > 1e-9:
+                adj_rows_r.append({
+                    "Mes_A": meses_sel[0],
+                    "Proyecto_A": "AJUSTE",
+                    "Clasificacion_A": clasificacion_nombre,
+                    "Categoria_A": "AJUSTE",
+                    "Cuenta_Nombre_A": "Ajuste Estado Resultado",
+                    "Neto_A": residual_r,
+                    "ES_AJUSTE": True
+                })
+
+            if adj_rows_r:
+                df_real_sel = pd.concat([df_real_sel, pd.DataFrame(adj_rows_r)], ignore_index=True)
 
         real_cla_nom = df_real_sel.groupby(["Clasificacion_A"], as_index=False)["Neto_A"].sum()
         real_cat_nom = df_real_sel.groupby(["Clasificacion_A", "Categoria_A"], as_index=False)["Neto_A"].sum()
@@ -694,14 +797,9 @@ def seccion_analisis_por_clasificacion(
         ).rename(columns={"Neto_A": "PPT NOM"}).fillna(0)
 
         df_cla["DIF NOM"] = df_cla["REAL NOM"] - df_cla["PPT NOM"]
-
-        # ✅ DIF % (variación vs PPT)
         df_cla["DIF %"] = np.where(df_cla["PPT NOM"] != 0, ((df_cla["REAL NOM"] / df_cla["PPT NOM"]) - 1) * 100, 0.0)
-
-        # ✅ DIF NOM / INGRESO REAL
         df_cla["%Ingresos"] = np.where(ingreso_real_sel != 0, (df_cla["DIF NOM"] / ingreso_real_sel) * 100, 0.0)
 
-        # ✅ Color SOLO DIF %
         def resaltar_dif_pct(row):
             styles = [""] * len(row)
             cols = list(row.index)
@@ -756,11 +854,18 @@ def seccion_analisis_por_clasificacion(
         df_cta["%Ingresos"] = np.where(ingreso_real_sel != 0, (df_cta["DIF NOM"] / ingreso_real_sel) * 100, 0.0)
 
         # ---------------- OUTPUT AGGRID (solo CUENTAS, agrupadas por Categoría) ----------------
-        df_out = df_cta[[
+        cols_base = [
             "Categoria_A", "Cuenta_Nombre_A",
             "PPT NOM", "REAL NOM", "DIF NOM", "DIF %",
             "PPT %", "REAL %", "%Ingresos"
-        ]].copy()
+        ]
+        df_out = df_cta[cols_base].copy()
+
+        # ✅ conservar flag para ocultar visualmente (pero que sume en totales)
+        if "ES_AJUSTE" in df_cta.columns:
+            df_out["ES_AJUSTE"] = df_cta["ES_AJUSTE"].fillna(False)
+        else:
+            df_out["ES_AJUSTE"] = False
 
         df_out["ING_PPT"] = float(ingreso_ppt_sel or 0.0)
         df_out["ING_REAL"] = float(ingreso_real_sel or 0.0)
@@ -804,7 +909,7 @@ def seccion_analisis_por_clasificacion(
                 if (params.node && params.node.group) {
                     var agg = params.node.aggData || {};
                     var ppt = agg["PPT NOM"] || 0;
-                    var ing = agg["ING_PPT"] || 0;
+                    var ing = (agg["ING_PPT"] || 0);
                     if (ing === 0) return 0;
                     return (ppt / ing) * 100;
                 }
@@ -817,7 +922,7 @@ def seccion_analisis_por_clasificacion(
                 if (params.node && params.node.group) {
                     var agg = params.node.aggData || {};
                     var real = agg["REAL NOM"] || 0;
-                    var ing = agg["ING_REAL"] || 0;
+                    var ing = (agg["ING_REAL"] || 0);
                     if (ing === 0) return 0;
                     return (real / ing) * 100;
                 }
@@ -830,7 +935,7 @@ def seccion_analisis_por_clasificacion(
                 if (params.node && params.node.group) {
                     var agg = params.node.aggData || {};
                     var dif = agg["DIF NOM"] || 0;
-                    var ing = agg["ING_REAL"] || 0;
+                    var ing = (agg["ING_REAL"] || 0);
                     if (ing === 0) return 0;
                     return (dif / ing) * 100;
                 }
@@ -850,6 +955,18 @@ def seccion_analisis_por_clasificacion(
         """)
 
         gridOptions = gb.build()
+
+        # ✅ ocultar filas de ajuste SIN dejar hueco (altura 0)
+        row_height = JsCode("""
+            function(params){
+                if (params.data && params.data.ES_AJUSTE === true){
+                    return 0;
+                }
+                return 32;
+            }
+        """)
+        gridOptions["rowHeight"] = 32
+        gridOptions["getRowHeight"] = row_height
 
         gridOptions["columnDefs"] = [
             {"field": group_col, "rowGroup": True, "hide": True},
@@ -876,8 +993,9 @@ def seccion_analisis_por_clasificacion(
             {"field": "%Ingresos", "headerName": "%Ingresos", "type": ["numericColumn"],
              "valueGetter": ingresos_pct_value_getter, "valueFormatter": pct_formatter, "cellStyle": {"textAlign": "right"}},
 
-            {"field": "ING_PPT", "hide": True, "aggFunc": "sum"},
-            {"field": "ING_REAL", "hide": True, "aggFunc": "sum"},
+            {"field": "ING_PPT", "hide": True, "aggFunc": "first"},
+            {"field": "ING_REAL", "hide": True, "aggFunc": "first"},
+            {"field": "ES_AJUSTE", "hide": True, "aggFunc": "first"},
         ]
 
         gridOptions["groupDisplayType"] = "singleColumn"
@@ -905,6 +1023,7 @@ def seccion_analisis_por_clasificacion(
             theme="streamlit",
             key=grid_key
         )
+
 def agrid_ingreso_con_totales(df):
     df = df.copy()
 
@@ -1092,7 +1211,7 @@ else:
 
         def resumen_empresa(df_ppt, df_real):
 
-            st.title("Resumen Presupuestal – Empresa")
+            st.title("Resumen Presupuestal – ESGARI")
 
             # ---------------- Filtros ----------------
             c1, c2, c3 = st.columns([2, 3, 2])
@@ -3465,6 +3584,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
