@@ -765,6 +765,10 @@ def seccion_analisis_por_clasificacion(
         df_out["ING_PPT"] = float(ingreso_ppt_sel or 0.0)
         df_out["ING_REAL"] = float(ingreso_real_sel or 0.0)
 
+        # ✅ NUEVO (solo para el cálculo en GROUP): Totales de la CLASIFICACIÓN (mismos en todas las filas)
+        df_out["CLA_PPT_TOTAL"] = float(cla_total_ppt or 0.0)
+        df_out["CLA_REAL_TOTAL"] = float(cla_total_real or 0.0)
+
         # ---------------- AGGRID ----------------
         gb = GridOptionsBuilder.from_dataframe(df_out)
         gb.configure_default_column(resizable=True, sortable=True, filter=True)
@@ -799,12 +803,18 @@ def seccion_analisis_por_clasificacion(
             }
         """)
 
-        # ✅ CAMBIO: PPT % y REAL % = NOM / TOTAL DE SU RESPECTIVA CATEGORIA
-        # En filas de grupo (Categoría) => 100%
+        # ✅ CAMBIO SOLO EN GROUP:
+        # PPT % (GROUP) = PPT NOM (categoría) / TOTAL PPT de la CLASIFICACIÓN
+        # REAL % (GROUP) = REAL NOM (categoría) / TOTAL REAL de la CLASIFICACIÓN
+        # En filas detalle se deja EXACTAMENTE igual (usa el valor ya calculado en df_out)
         ppt_pct_value_getter = JsCode("""
             function(params){
                 if (params.node && params.node.group) {
-                    return 100;
+                    var agg = params.node.aggData || {};
+                    var ppt = agg["PPT NOM"] || 0;
+                    var cla = agg["CLA_PPT_TOTAL"] || 0;
+                    if (cla === 0) return 0;
+                    return (ppt / cla) * 100;
                 }
                 return params.data ? params.data["PPT %"] : 0;
             }
@@ -813,7 +823,11 @@ def seccion_analisis_por_clasificacion(
         real_pct_value_getter = JsCode("""
             function(params){
                 if (params.node && params.node.group) {
-                    return 100;
+                    var agg = params.node.aggData || {};
+                    var real = agg["REAL NOM"] || 0;
+                    var cla = agg["CLA_REAL_TOTAL"] || 0;
+                    if (cla === 0) return 0;
+                    return (real / cla) * 100;
                 }
                 return params.data ? params.data["REAL %"] : 0;
             }
@@ -872,6 +886,10 @@ def seccion_analisis_por_clasificacion(
 
             {"field": "ING_PPT", "hide": True, "aggFunc": "first"},
             {"field": "ING_REAL", "hide": True, "aggFunc": "first"},
+
+            # ✅ NUEVOS (ocultos): para que estén disponibles en aggData del GROUP
+            {"field": "CLA_PPT_TOTAL", "hide": True, "aggFunc": "first"},
+            {"field": "CLA_REAL_TOTAL", "hide": True, "aggFunc": "first"},
         ]
 
         gridOptions["groupDisplayType"] = "singleColumn"
@@ -899,6 +917,7 @@ def seccion_analisis_por_clasificacion(
             theme="streamlit",
             key=grid_key
         )
+
 
 def agrid_ingreso_con_totales(df):
     df = df.copy()
@@ -3460,6 +3479,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
