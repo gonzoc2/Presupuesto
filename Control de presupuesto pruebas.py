@@ -13,8 +13,6 @@ import streamlit.components.v1 as components
 import unicodedata
 import re
 
-
-
 st.set_page_config(
     page_title="Control de Presupuesto",
     page_icon="🚚", #buscar un icono
@@ -409,8 +407,6 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
 
     df_agrid = df_agrid.copy()
     df_ppt_actual = df_ppt_actual.copy()
-
-    # ---------------- Limpieza ----------------
     for df in (df_agrid, df_ppt_actual):
         df["Proyecto_A"] = df["Proyecto_A"].astype(str).str.strip()
         df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
@@ -425,41 +421,38 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
     group_col = "Categoria_A"
     detalle_col = "Cuenta_Nombre_A"
     group_cols = [group_col, detalle_col]
-
-    # ---------------- PPT ----------------
     df_ppt = df_agrid[
         (df_agrid["Mes_A"].isin(meses_sel)) &
         (df_agrid["Proyecto_A"].isin(proyecto_codigo)) &
         (df_agrid[clasificacion] == categoria)
     ].copy()
     df_ppt = df_ppt.groupby(group_cols, as_index=False).agg(PPT=("Neto_A", "sum"))
-
-    # ---------------- REAL (YTD) ----------------
     df_ytd = df_ppt_actual[
         (df_ppt_actual["Mes_A"].isin(meses_sel)) &
         (df_ppt_actual["Proyecto_A"].isin(proyecto_codigo)) &
         (df_ppt_actual[clasificacion] == categoria)
     ].copy()
     df_ytd = df_ytd.groupby(group_cols, as_index=False).agg(YTD=("Neto_A", "sum"))
-
-    # ---------------- Merge detalle ----------------
     df_out = pd.merge(df_ppt, df_ytd, on=group_cols, how="outer").fillna(0.0)
 
-    # Variación % a nivel CUENTA (leaf rows)
+    for c in ["PPT", "YTD"]:
+        df_out[c] = pd.to_numeric(df_out[c], errors="coerce").fillna(0.0)
+    df_out["Diferencia nominal"] = df_out["YTD"] - df_out["PPT"]
     df_out["Variación %"] = np.where(
         df_out["PPT"] != 0,
         ((df_out["YTD"] / df_out["PPT"]) - 1) * 100,
         0.0
     )
 
-    for c in ["PPT", "YTD", "Variación %"]:
+    for c in ["Variación %", "Diferencia nominal"]:
         df_out[c] = pd.to_numeric(df_out[c], errors="coerce").fillna(0.0)
-
-    # ---------------- AgGrid ----------------
     money_fmt = JsCode("""
         function(params){
             if (params.value === null || params.value === undefined) return '';
-            return '$' + params.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return params.value.toLocaleString(
+                'es-MX',
+                { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 }
+            );
         }
     """)
 
@@ -470,7 +463,6 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
         }
     """)
 
-    # ✅ Variación % para grupos: usa aggData (PPT y YTD ya vienen sumados por aggFunc)
     var_value_getter = JsCode("""
         function(params){
             // Group row
@@ -485,31 +477,36 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
             return params.data ? params.data["Variación %"] : 0;
         }
     """)
+    dif_value_getter = JsCode("""
+        function(params){
+            // Group row
+            if (params.node && params.node.group) {
+                var agg = params.node.aggData || {};
+                var ppt = agg.PPT || 0;
+                var ytd = agg.YTD || 0;
+                return ytd - ppt;
+            }
+            // Leaf row
+            return params.data ? params.data["Diferencia nominal"] : 0;
+        }
+    """)
 
     gb = GridOptionsBuilder.from_dataframe(df_out)
     gb.configure_default_column(resizable=True, sortable=True, filter=True)
 
     grid_options = gb.build()
-
-    # ✅ Agrupar por Categoria_A (oculta)
-    # (IMPORTANTE: lo ponemos en columnDefs para no perderlo)
     grid_options["columnDefs"] = [
         {"field": group_col, "rowGroup": True, "hide": True},
-
         {"field": detalle_col, "headerName": "Cuenta_Nombre_A", "minWidth": 320},
-
         {"field": "PPT", "headerName": "PPT", "type": ["numericColumn"],
          "aggFunc": "sum", "valueFormatter": money_fmt, "cellStyle": {"textAlign": "right"}},
-
         {"field": "YTD", "headerName": "YTD", "type": ["numericColumn"],
          "aggFunc": "sum", "valueFormatter": money_fmt, "cellStyle": {"textAlign": "right"}},
-
-        # 👇 No usamos "aggFunc": aquí. La calculamos para group con valueGetter.
+        {"field": "Diferencia nominal", "headerName": "Diferencia nominal", "type": ["numericColumn"],
+         "valueGetter": dif_value_getter, "valueFormatter": money_fmt, "cellStyle": {"textAlign": "right"}},
         {"field": "Variación %", "headerName": "Variación %", "type": ["numericColumn"],
          "valueGetter": var_value_getter, "valueFormatter": pct_fmt, "cellStyle": {"textAlign": "right"}},
     ]
-
-    # ✅ UNA sola columna de Group (autoGroup column)
     grid_options["groupDisplayType"] = "singleColumn"
     grid_options["groupDefaultExpanded"] = 0
     grid_options["autoGroupColumnDef"] = {
@@ -532,7 +529,6 @@ def tabla_comparativa(df_agrid, df_ppt_actual, proyecto_codigo, meses_selecciona
     )
 
     return df_out
-
 def seccion_analisis_especial_porcentual(
     df_ppt, df_real, ingreso,
     meses_seleccionado, proyecto_codigo, proyecto_nombre,
@@ -1796,7 +1792,6 @@ else:
 
             proyectos_oh = ["8002", "8004"]
             clas_oh = ["COSS", "G.ADMN"]
-
             df_ppt_f = df_ppt[
                 (df_ppt["Mes_A"].isin(meses_seleccionado)) &
                 (df_ppt["Proyecto_A"].astype(str).isin(proyectos_oh)) &
@@ -1811,6 +1806,19 @@ else:
                 (df_real["CeCo_A"].astype(str).isin([str(x) for x in cecos_seleccionados]))
             ].copy()
 
+            df_ingreso_real = df_real[
+                (df_real["Mes_A"].isin(meses_seleccionado)) &
+                (df_real["Proyecto_A"].astype(str).isin(proyectos_oh)) &
+                (df_real["CeCo_A"].astype(str).isin([str(x) for x in cecos_seleccionados])) &
+                (df_real["Categoria_A"].astype(str).str.strip() == "INGRESO")
+            ].copy()
+
+            ingreso_real_por_mes = (
+                df_ingreso_real.groupby("Mes_A", as_index=False)["Neto_A"]
+                .sum()
+                .rename(columns={"Neto_A": "INGRESO_REAL"})
+            )
+
             ppt_por_mes = (
                 df_ppt_f.groupby("Mes_A", as_index=False)["Neto_A"]
                 .sum()
@@ -1824,8 +1832,13 @@ else:
             )
 
             tabla = ppt_por_mes.merge(real_por_mes, on="Mes_A", how="outer").fillna(0)
+            tabla = tabla.merge(ingreso_real_por_mes, on="Mes_A", how="left").fillna({"INGRESO_REAL": 0})
             tabla["DIF"] = tabla["REAL"] - tabla["PPT"]
             tabla["%"] = tabla.apply(lambda r: (r["REAL"] / r["PPT"] - 1) if r["PPT"] != 0 else 0, axis=1)
+            tabla["%S/INGRESO"] = tabla.apply(
+                lambda r: (r["DIF"] / r["INGRESO_REAL"]) if r["INGRESO_REAL"] != 0 else 0,
+                axis=1
+            )
 
             orden = {m: i for i, m in enumerate(MESES_ORDENADOS)}
             tabla["__ord"] = tabla["Mes_A"].map(orden).fillna(999).astype(int)
@@ -1836,18 +1849,22 @@ else:
             total_dif = total_real - total_ppt
             total_pct = (total_real / total_ppt - 1) if total_ppt != 0 else 0
 
+            total_ingreso_real = float(tabla["INGRESO_REAL"].sum())
+            total_pct_s_ing = (total_dif / total_ingreso_real) if total_ingreso_real != 0 else 0
+
             total_row = pd.DataFrame([{
                 "Mes_A": "TOTAL",
                 "PPT": total_ppt,
                 "REAL": total_real,
+                "INGRESO_REAL": total_ingreso_real,
                 "DIF": total_dif,
-                "%": total_pct
+                "%": total_pct,
+                "%S/INGRESO": total_pct_s_ing
             }])
 
             tabla_final = pd.concat([tabla, total_row], ignore_index=True)
-
-            # ✅ SOLO FORMATO (misma lógica)
             BLUE = "#00112B"
+            tabla_final = tabla_final.drop(columns=["INGRESO_REAL"], errors="ignore")
             styled = (
                 tabla_final.style
                 .set_table_styles([
@@ -1858,17 +1875,17 @@ else:
                 .format({
                     "PPT": "${:,.2f}",
                     "REAL": "${:,.2f}",
+                    "INGRESO_REAL": "${:,.2f}",
                     "DIF": "${:,.2f}",
                     "%": "{:.2%}",
+                    "%S/INGRESO": "{:.2%}",
                 })
             )
 
-            st.subheader("OH — PPT vs REAL")
+            st.subheader("📌 OH — PPT vs REAL")
             st.dataframe(styled, use_container_width=True)
-
-            # ✅ Gráfico (PPT vs REAL por mes; sin cambiar cálculos)
             fig = go.Figure()
-            
+
             fig.add_trace(go.Bar(
                 x=tabla["Mes_A"],
                 y=tabla["PPT"] / 1000,
@@ -1877,7 +1894,7 @@ else:
                 texttemplate="%{text}k",
                 textposition="outside"
             ))
-            
+
             fig.add_trace(go.Bar(
                 x=tabla["Mes_A"],
                 y=tabla["REAL"] / 1000,
@@ -1886,7 +1903,7 @@ else:
                 texttemplate="%{text}k",
                 textposition="outside"
             ))
-            
+
             fig.update_layout(
                 title="OH PPT vs REAL",
                 xaxis_title="Mes",
@@ -1899,7 +1916,7 @@ else:
                     ticksuffix="k"
                 )
             )
-            
+
             st.plotly_chart(fig, use_container_width=True)
             return tabla_final
         def agrid_oh_con_totales(df, filtro_col, filtro_val):
@@ -3494,6 +3511,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
