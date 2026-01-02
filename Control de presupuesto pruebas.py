@@ -1863,7 +1863,7 @@ else:
                 })
             )
 
-            st.subheader("📌 OH — PPT vs REAL")
+            st.subheader("OH — PPT vs REAL")
             st.dataframe(styled, use_container_width=True)
 
             # ✅ Gráfico (PPT vs REAL por mes; sin cambiar cálculos)
@@ -3322,6 +3322,7 @@ else:
                 legend_title="Tipo"
             )
             return fig
+
         df_ppt = df_ppt.copy()
         df_real = df_real.copy()
         df_ppt.columns = df_ppt.columns.astype(str).str.strip()
@@ -3363,6 +3364,7 @@ else:
 
         nombres = df_visibles["nombre"].tolist()
         codigos = df_visibles["proyectos"].tolist()
+
         ing_ppt_mes = _ingresos_total_por_mes(df_ppt, meses_sel).rename(columns={"INGRESO": "PPT"})
         ing_real_mes = _ingresos_total_por_mes(df_real, meses_sel).rename(columns={"INGRESO": "REAL"})
         fig_ing_line = _linea_ppt_real(ing_ppt_mes, ing_real_mes, "INGRESO (línea)")
@@ -3379,10 +3381,24 @@ else:
         fig_coss_bar = _bar_mes_ppt_real(coss_ppt_mes, coss_real_mes, "COSS mensual (PPT vs REAL)")
         fig_gadmn_bar = _bar_mes_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN mensual (PPT vs REAL)")
 
+        # =========================
+        # % UTILIDAD OPERATIVA (EXCLUYE 8002/8003/8004)
+        # =========================
+        excluir_uo = {"8002", "8003", "8004"}
+
+        nombres_uo = []
+        codigos_uo = []
+        for nombre, codigo in zip(nombres, codigos):
+            c = str(codigo).strip()
+            if c in excluir_uo:
+                continue
+            nombres_uo.append(nombre)
+            codigos_uo.append(c)
+
         ppt_pct = {}
         real_pct = {}
 
-        for nombre, codigo in zip(nombres, codigos):
+        for nombre, codigo in zip(nombres_uo, codigos_uo):
             codigo_list = [str(codigo)]
             er_ppt = estado_resultado(df_ppt, meses_sel, nombre, codigo_list, list_pro) or {}
             er_real = estado_resultado(df_real, meses_sel, nombre, codigo_list, list_pro) or {}
@@ -3390,9 +3406,9 @@ else:
             real_pct[nombre] = to_float(er_real.get("por_utilidad_operativa"))
 
         df_uo = pd.DataFrame({
-            "Proyecto": nombres,
-            "PPT": [ppt_pct.get(n, 0.0) for n in nombres],
-            "REAL": [real_pct.get(n, 0.0) for n in nombres],
+            "Proyecto": nombres_uo,
+            "PPT": [ppt_pct.get(n, 0.0) for n in nombres_uo],
+            "REAL": [real_pct.get(n, 0.0) for n in nombres_uo],
         }).sort_values("REAL", ascending=False)
 
         fig_uo = go.Figure()
@@ -3448,7 +3464,6 @@ else:
                 if df_uo.empty:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
-                    # OJO: misma figura se dibuja en tab2, por eso key diferente
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
 
         with tab2:
@@ -3479,6 +3494,8 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
+
 
 
 
