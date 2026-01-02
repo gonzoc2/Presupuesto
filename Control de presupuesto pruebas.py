@@ -1792,6 +1792,7 @@ else:
 
             proyectos_oh = ["8002", "8004"]
             clas_oh = ["COSS", "G.ADMN"]
+
             df_ppt_f = df_ppt[
                 (df_ppt["Mes_A"].isin(meses_seleccionado)) &
                 (df_ppt["Proyecto_A"].astype(str).isin(proyectos_oh)) &
@@ -1806,19 +1807,6 @@ else:
                 (df_real["CeCo_A"].astype(str).isin([str(x) for x in cecos_seleccionados]))
             ].copy()
 
-            df_ingreso_real = df_real[
-                (df_real["Mes_A"].isin(meses_seleccionado)) &
-                (df_real["Proyecto_A"].astype(str).isin(proyectos_oh)) &
-                (df_real["CeCo_A"].astype(str).isin([str(x) for x in cecos_seleccionados])) &
-                (df_real["Categoria_A"].astype(str).str.strip() == "INGRESO")
-            ].copy()
-
-            ingreso_real_por_mes = (
-                df_ingreso_real.groupby("Mes_A", as_index=False)["Neto_A"]
-                .sum()
-                .rename(columns={"Neto_A": "INGRESO_REAL"})
-            )
-
             ppt_por_mes = (
                 df_ppt_f.groupby("Mes_A", as_index=False)["Neto_A"]
                 .sum()
@@ -1832,13 +1820,8 @@ else:
             )
 
             tabla = ppt_por_mes.merge(real_por_mes, on="Mes_A", how="outer").fillna(0)
-            tabla = tabla.merge(ingreso_real_por_mes, on="Mes_A", how="left").fillna({"INGRESO_REAL": 0})
             tabla["DIF"] = tabla["REAL"] - tabla["PPT"]
             tabla["%"] = tabla.apply(lambda r: (r["REAL"] / r["PPT"] - 1) if r["PPT"] != 0 else 0, axis=1)
-            tabla["%S/INGRESO"] = tabla.apply(
-                lambda r: (r["DIF"] / r["INGRESO_REAL"]) if r["INGRESO_REAL"] != 0 else 0,
-                axis=1
-            )
 
             orden = {m: i for i, m in enumerate(MESES_ORDENADOS)}
             tabla["__ord"] = tabla["Mes_A"].map(orden).fillna(999).astype(int)
@@ -1849,22 +1832,18 @@ else:
             total_dif = total_real - total_ppt
             total_pct = (total_real / total_ppt - 1) if total_ppt != 0 else 0
 
-            total_ingreso_real = float(tabla["INGRESO_REAL"].sum())
-            total_pct_s_ing = (total_dif / total_ingreso_real) if total_ingreso_real != 0 else 0
-
             total_row = pd.DataFrame([{
                 "Mes_A": "TOTAL",
                 "PPT": total_ppt,
                 "REAL": total_real,
-                "INGRESO_REAL": total_ingreso_real,
                 "DIF": total_dif,
-                "%": total_pct,
-                "%S/INGRESO": total_pct_s_ing
+                "%": total_pct
             }])
 
             tabla_final = pd.concat([tabla, total_row], ignore_index=True)
+
+            # ✅ SOLO FORMATO (misma lógica)
             BLUE = "#00112B"
-            tabla_final = tabla_final.drop(columns=["INGRESO_REAL"], errors="ignore")
             styled = (
                 tabla_final.style
                 .set_table_styles([
@@ -1875,17 +1854,17 @@ else:
                 .format({
                     "PPT": "${:,.2f}",
                     "REAL": "${:,.2f}",
-                    "INGRESO_REAL": "${:,.2f}",
                     "DIF": "${:,.2f}",
                     "%": "{:.2%}",
-                    "%S/INGRESO": "{:.2%}",
                 })
             )
 
-            st.subheader("📌 OH — PPT vs REAL")
+            st.subheader("OH — PPT vs REAL")
             st.dataframe(styled, use_container_width=True)
-            fig = go.Figure()
 
+            # ✅ Gráfico (PPT vs REAL por mes; sin cambiar cálculos)
+            fig = go.Figure()
+            
             fig.add_trace(go.Bar(
                 x=tabla["Mes_A"],
                 y=tabla["PPT"] / 1000,
@@ -1894,7 +1873,7 @@ else:
                 texttemplate="%{text}k",
                 textposition="outside"
             ))
-
+            
             fig.add_trace(go.Bar(
                 x=tabla["Mes_A"],
                 y=tabla["REAL"] / 1000,
@@ -1903,7 +1882,7 @@ else:
                 texttemplate="%{text}k",
                 textposition="outside"
             ))
-
+            
             fig.update_layout(
                 title="OH PPT vs REAL",
                 xaxis_title="Mes",
@@ -1916,7 +1895,7 @@ else:
                     ticksuffix="k"
                 )
             )
-
+            
             st.plotly_chart(fig, use_container_width=True)
             return tabla_final
         def agrid_oh_con_totales(df, filtro_col, filtro_val):
@@ -3511,6 +3490,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
