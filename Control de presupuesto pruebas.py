@@ -203,44 +203,61 @@ def patio(df, meses, codigo_pro, proyecto_nombre):
             patio_t += 0
     return patio_t
 
-def gadmn(df, meses, codigo_pro, pro, lista_proyectos, categorias_flex_com=None):
-    """
-    categorias_flex_com: lista de categorías para el ajuste de FLEX (si aplica)
-    """
-    categorias_flex_com = categorias_flex_com or []
+def gadmn(df, meses, codigo_pro, pro, lista_proyectos):
     pat_oh = ["8002", "8003", "8004"]
-
-    mal_clasificados_total = 0
-
-    df_base = df[~df["Proyecto_A"].isin(pat_oh)].copy() if pro in ["ESGARI", "FLEX DEDICADO", "FLEX SPOT"] else df.copy()
-    df_mes = df_base[df_base["Mes_A"].isin(meses)]
-
     if pro == "ESGARI":
-        df_gadmn = df_mes[df_mes["Clasificacion_A"] == "G.ADMN"]
-        return df_gadmn["Neto_A"].sum(), 0
-
-    df_pro = df_mes[df_mes["Proyecto_A"].isin(codigo_pro)]
-    df_gadmn = df_pro[df_pro["Clasificacion_A"] == "G.ADMN"]
-    gadmn_pro = df_gadmn["Neto_A"].sum()
-
-    if pro == "FLEX DEDICADO":
-        gadmn_flexs = df_pro[df_pro["Categoria_A"].isin(categorias_flex_com)]["Neto_A"].sum() * 0.15
-        gadmn_pro -= gadmn_flexs
-
-    if pro == "FLEX SPOT":
-        df_pro_flexd = df_mes[df_mes["Proyecto_A"].isin(["2001"])]
-        gadmn_flexd = df_pro_flexd[df_pro_flexd["Categoria_A"].isin(categorias_flex_com)]["Neto_A"].sum() * 0.15
-        gadmn_pro += gadmn_flexd
-
-    for x in meses:
-        por_ing = porcentaje_ingresos(df_base, [x], pro, codigo_pro)
-        df_mes_x = df_base[df_base["Mes_A"] == x]
-        mal = df_mes_x[~df_mes_x["Proyecto_A"].isin(lista_proyectos)]
-        mal = mal[mal["Clasificacion_A"].isin(["G.ADMN"])]["Neto_A"].sum() * por_ing
-        gadmn_pro += mal
-        mal_clasificados_total += mal
-
-    return gadmn_pro, mal_clasificados_total
+        df = df[~df['Proyecto_A'].isin(pat_oh)]
+        df_mes = df[df['Mes_A'].isin(meses)]
+        df_gadmn = df_mes[df_mes['Clasificacion_A'] == 'G.ADMN']
+        gadmn_pro = df_gadmn['Neto_A'].sum()
+        mal_clasificados = 0
+    elif pro == "FLEX DEDICADO":
+        df = df[~df['Proyecto_A'].isin(pat_oh)]
+        df_mes = df[df['Mes_A'].isin(meses)]
+        df_pro = df_mes[df_mes['Proyecto_A'].isin(codigo_pro)]
+        df_gadmn = df_pro[df_pro['Clasificacion_A'] == 'G.ADMN']
+        gadmn_pro = df_gadmn['Neto_A'].sum()
+        gadmn_flexs = df_pro[df_pro['Categoria_A'].isin(categorias_felx_com)]['Neto_A'].sum()*.15
+        gadmn_pro = gadmn_pro - gadmn_flexs
+        mal_clasificados = 0
+        for x in meses:
+            por_ingresos = porcentaje_ingresos(df, [x], pro, codigo_pro)
+            df_mes_x = df[df["Mes_A"] == x]
+            mal_clas = df_mes_x[~df_mes_x["Proyecto_A"].isin(lista_proyectos)]
+            mal_clas = mal_clas[mal_clas["Clasificacion_A"].isin(["G.ADMN"])]["Neto_A"].sum() * por_ingresos
+            gadmn_pro += mal_clas
+            mal_clasificados += mal_clas
+    elif pro == "FLEX SPOT":
+        df = df[~df['Proyecto_A'].isin(pat_oh)]
+        df_mes = df[df['Mes_A'].isin(meses)]
+        df_pro = df_mes[df_mes['Proyecto_A'].isin(codigo_pro)]
+        df_gadmn = df_pro[df_pro['Clasificacion_A'] == 'G.ADMN']
+        gadmn_pro = df_gadmn['Neto_A'].sum()
+        df_pro_flexd = df_mes[df_mes['Proyecto_A'].isin(["2001"])]
+        gadmn_flexd = df_pro_flexd[df_pro_flexd['Categoria_A'].isin(categorias_felx_com)]['Neto_A'].sum() * .15
+        gadmn_pro = gadmn_pro + gadmn_flexd
+        mal_clasificados = 0
+        for x in meses:
+            por_ingresos = porcentaje_ingresos(df, [x], pro, codigo_pro)
+            df_mes_x = df[df["Mes_A"] == x]
+            mal_clas = df_mes_x[~df_mes_x["Proyecto_A"].isin(lista_proyectos)]
+            mal_clas = mal_clas[mal_clas["Clasificacion_A"].isin(["G.ADMN"])]["Neto_A"].sum() * por_ingresos
+            gadmn_pro += mal_clas
+            mal_clasificados += mal_clas
+    else:
+        df_mes = df[df['Mes_A'].isin(meses)]
+        df_pro = df_mes[df_mes['Proyecto_A'].isin(codigo_pro)]
+        df_gadmn = df_pro[df_pro['Clasificacion_A'] == 'G.ADMN']
+        gadmn_pro = df_gadmn['Neto_A'].sum()
+        mal_clasificados = 0
+        for x in meses:
+            por_ingresos = porcentaje_ingresos(df, [x], pro, codigo_pro)
+            df_mes_x = df[df["Mes_A"] == x]
+            mal_clas = df_mes_x[~df_mes_x["Proyecto_A"].isin(lista_proyectos)]
+            mal_clas = mal_clas[mal_clas["Clasificacion_A"].isin(["G.ADMN"])]["Neto_A"].sum() * por_ingresos
+            gadmn_pro += mal_clas
+            mal_clasificados += mal_clas
+    return gadmn_pro, mal_clasificados
 
 def oh(df, meses, codigo_pro, nombre_proyecto):
     oh_pro = 0
@@ -3490,6 +3507,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
