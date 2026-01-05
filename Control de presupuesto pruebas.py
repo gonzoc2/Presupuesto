@@ -217,7 +217,7 @@ def gadmn(df, meses, codigo_pro, pro, lista_proyectos):
         df_pro = df_mes[df_mes['Proyecto_A'].isin(codigo_pro)]
         df_gadmn = df_pro[df_pro['Clasificacion_A'] == 'G.ADMN']
         gadmn_pro = df_gadmn['Neto_A'].sum()
-        gadmn_flexs = df_pro[df_pro['Categoria_A'].isin(categorias_felx_com)]['Neto_A'].sum()*.15
+        gadmn_flexs = df_pro[df_pro['Categoria_A']]['Neto_A'].sum()*.15
         gadmn_pro = gadmn_pro - gadmn_flexs
         mal_clasificados = 0
         for x in meses:
@@ -234,7 +234,7 @@ def gadmn(df, meses, codigo_pro, pro, lista_proyectos):
         df_gadmn = df_pro[df_pro['Clasificacion_A'] == 'G.ADMN']
         gadmn_pro = df_gadmn['Neto_A'].sum()
         df_pro_flexd = df_mes[df_mes['Proyecto_A'].isin(["2001"])]
-        gadmn_flexd = df_pro_flexd[df_pro_flexd['Categoria_A'].isin(categorias_felx_com)]['Neto_A'].sum() * .15
+        gadmn_flexd = df_pro_flexd[df_pro_flexd['Categoria_A']]['Neto_A'].sum() * .15
         gadmn_pro = gadmn_pro + gadmn_flexd
         mal_clasificados = 0
         for x in meses:
@@ -3507,6 +3507,7 @@ else:
                     st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
+
 
 
 
