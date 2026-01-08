@@ -3567,64 +3567,6 @@ else:
             proyectos_local["nombre"] = proyectos_local["nombre"].astype(str).str.strip()
 
             proyectos_oh_set = set([str(x).strip() for x in proyectos_oh])
-
-            allowed = [str(x).strip() for x in st.session_state.get("proyectos", [])]
-
-            def _excluir_oh(df):
-                return df[~df["proyectos"].isin(proyectos_oh_set)].copy()
-
-            if allowed == ["ESGARI"]:
-                df_visibles = _excluir_oh(proyectos_local)
-                if df_visibles.empty:
-                    st.error("No hay proyectos visibles (después de excluir proyectos OH).")
-                    st.stop()
-
-                opciones = ["ESGARI"] + df_visibles["nombre"].dropna().tolist()
-                proyecto_nombre = col.selectbox("Selecciona un proyecto", opciones, key="proyectos2_select")
-
-                if proyecto_nombre == "ESGARI":
-                    proyecto_codigo = df_visibles["proyectos"].astype(str).tolist()  # ✅ todos (sin OH)
-                else:
-                    proyecto_codigo = df_visibles.loc[
-                        df_visibles["nombre"] == proyecto_nombre, "proyectos"
-                    ].astype(str).tolist()
-
-            else:
-                df_visibles = proyectos_local[proyectos_local["proyectos"].isin(allowed)].copy()
-                df_visibles = _excluir_oh(df_visibles)
-
-                if df_visibles.empty:
-                    st.error("No hay proyectos visibles para este usuario (o todos son OH). Revisa permisos vs catálogo.")
-                    st.stop()
-
-                opciones = ["ESGARI"] + df_visibles["nombre"].dropna().unique().tolist()
-                proyecto_nombre = col.selectbox("Selecciona un proyecto", opciones, key="proyectos2_select")
-
-                if proyecto_nombre == "ESGARI":
-                    proyecto_codigo = df_visibles["proyectos"].astype(str).tolist()  # ✅ todos los visibles (sin OH)
-                else:
-                    proyecto_codigo = df_visibles.loc[
-                        df_visibles["nombre"] == proyecto_nombre, "proyectos"
-                    ].astype(str).tolist()
-
-            if not proyecto_codigo:
-                st.error("No se encontró código para el proyecto seleccionado. Revisa duplicados o nombres en el catálogo.")
-                st.stop()
-
-            return proyecto_codigo, proyecto_nombre
-
-
-    elif selected == "Proyectos2":
-
-        # ✅ Filtro proyectos con catálogo global `proyectos`
-        # - Excluye proyectos_oh siempre
-        # - Si selecciona "ESGARI" => toma TODOS los proyectos visibles (según st.session_state["proyectos"])
-        def filtro_proyectos_esgari(col, proyectos_oh):
-            proyectos_local = proyectos.copy()
-            proyectos_local["proyectos"] = proyectos_local["proyectos"].astype(str).str.strip()
-            proyectos_local["nombre"] = proyectos_local["nombre"].astype(str).str.strip()
-
-            proyectos_oh_set = set([str(x).strip() for x in proyectos_oh])
             allowed = [str(x).strip() for x in st.session_state.get("proyectos", [])]
 
             def _excluir_oh(df):
@@ -3694,7 +3636,6 @@ else:
                 df["Clasificacion_A"] = df["Clasificacion_A"].astype(str).str.strip()
                 if "Categoria_A" in df.columns:
                     df["Categoria_A"] = df["Categoria_A"].astype(str).str.strip()
-
                 df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
 
             cecos_sel = [str(x).strip() for x in cecos_seleccionados]
@@ -3717,15 +3658,22 @@ else:
                 (df_real["CeCo_A"].isin(cecos_sel))
             ].copy()
 
+            if df_ppt_f.empty and df_real_f.empty:
+                st.info("Sin datos para los filtros seleccionados (Mes/Proyecto/CeCo/Clasificación).")
+                return None
+
             # =======================
-            # 2) Resumen por CeCo + Clasificación (PPT y REAL) -> pivot a columnas
+            # 2) Pivot robusto (SIEMPRE devuelve columnas finales esperadas)
             # =======================
             def _pivot_clas(df_in, col_value_name):
+                cols_out = ["CeCo_A", f"{col_value_name}_GADM", f"{col_value_name}_COSS"]
+
                 if df_in.empty:
-                    base = pd.DataFrame({"CeCo_A": []})
-                    base["G.ADMN"] = 0.0
-                    base["COSS"] = 0.0
-                    return base
+                    return pd.DataFrame({
+                        "CeCo_A": pd.Series([], dtype=str),
+                        f"{col_value_name}_GADM": pd.Series([], dtype=float),
+                        f"{col_value_name}_COSS": pd.Series([], dtype=float),
+                    })[cols_out]
 
                 tmp = (
                     df_in.groupby(["CeCo_A", "Clasificacion_A"], as_index=False)["Neto_A"]
@@ -3733,7 +3681,6 @@ else:
                 )
                 piv = tmp.pivot(index="CeCo_A", columns="Clasificacion_A", values="Neto_A").fillna(0.0).reset_index()
 
-                # asegurar columnas
                 if "G.ADMN" not in piv.columns:
                     piv["G.ADMN"] = 0.0
                 if "COSS" not in piv.columns:
@@ -3744,7 +3691,11 @@ else:
                     "G.ADMN": f"{col_value_name}_GADM",
                     "COSS": f"{col_value_name}_COSS"
                 })
-                return piv
+
+                for c in cols_out:
+                    if c not in piv.columns:
+                        piv[c] = 0.0
+                return piv[cols_out]
 
             ppt_piv = _pivot_clas(df_ppt_f, "PPT")
             real_piv = _pivot_clas(df_real_f, "REAL")
@@ -3767,7 +3718,6 @@ else:
 
             # =======================
             # 4) Métricas separadas solicitadas
-            # Columnas:
             # DIF.G.ADMN, VAR %G.ADM, DIF. COSS, VAR.% COSS, G.ADMN/ INGRESOS y COSS/ INGRESOS
             # =======================
             tabla["DIF.G.ADMN"] = tabla["REAL_GADM"] - tabla["PPT_GADM"]
@@ -3776,17 +3726,9 @@ else:
             tabla["DIF. COSS"] = tabla["REAL_COSS"] - tabla["PPT_COSS"]
             tabla["VAR.% COSS"] = np.where(tabla["PPT_COSS"] != 0, (tabla["REAL_COSS"] / tabla["PPT_COSS"]) - 1, 0.0)
 
-            # ✅ proporción vs ingreso real del scope seleccionado (en %)
-            tabla["G.ADMN/ INGRESOS"] = np.where(
-                ingreso_real_esgari != 0,
-                tabla["DIF.G.ADMN"] / ingreso_real_esgari,
-                0.0
-            )
-            tabla["COSS/ INGRESOS"] = np.where(
-                ingreso_real_esgari != 0,
-                tabla["DIF. COSS"] / ingreso_real_esgari,
-                0.0
-            )
+            # ✅ ratio vs ingreso real del scope seleccionado
+            tabla["G.ADMN/ INGRESOS"] = np.where(ingreso_real_esgari != 0, tabla["DIF.G.ADMN"] / ingreso_real_esgari, 0.0)
+            tabla["COSS/ INGRESOS"] = np.where(ingreso_real_esgari != 0, tabla["DIF. COSS"] / ingreso_real_esgari, 0.0)
 
             # =======================
             # 5) Map CeCo -> nombre
@@ -3807,7 +3749,7 @@ else:
             )
             tabla["ceco"] = tabla["ceco"].fillna(tabla["CeCo_A"])
 
-            # ✅ SOLO columnas visibles (como pediste)
+            # ✅ SOLO columnas visibles
             tabla = tabla[[
                 "ceco",
                 "DIF.G.ADMN", "VAR %G.ADM",
@@ -3816,17 +3758,16 @@ else:
             ]].copy()
 
             # =======================
-            # 6) Total row
+            # 6) Total row (coherente con tabla)
             # =======================
-            # Para VAR% totales: usar (REAL_total/PPT_total - 1) por clasificación
-            total_ppt_gadm = float(ppt_piv["PPT_GADM"].sum()) if "PPT_GADM" in ppt_piv.columns else 0.0
-            total_real_gadm = float(real_piv["REAL_GADM"].sum()) if "REAL_GADM" in real_piv.columns else 0.0
+            total_ppt_gadm = float(ppt_piv["PPT_GADM"].sum())
+            total_real_gadm = float(real_piv["REAL_GADM"].sum())
             total_dif_gadm = total_real_gadm - total_ppt_gadm
             total_var_gadm = (total_real_gadm / total_ppt_gadm - 1) if total_ppt_gadm != 0 else 0.0
             total_gadm_ing = (total_dif_gadm / ingreso_real_esgari) if ingreso_real_esgari != 0 else 0.0
 
-            total_ppt_coss = float(ppt_piv["PPT_COSS"].sum()) if "PPT_COSS" in ppt_piv.columns else 0.0
-            total_real_coss = float(real_piv["REAL_COSS"].sum()) if "REAL_COSS" in real_piv.columns else 0.0
+            total_ppt_coss = float(ppt_piv["PPT_COSS"].sum())
+            total_real_coss = float(real_piv["REAL_COSS"].sum())
             total_dif_coss = total_real_coss - total_ppt_coss
             total_var_coss = (total_real_coss / total_ppt_coss - 1) if total_ppt_coss != 0 else 0.0
             total_coss_ing = (total_dif_coss / ingreso_real_esgari) if ingreso_real_esgari != 0 else 0.0
@@ -3844,7 +3785,7 @@ else:
             tabla_final = pd.concat([tabla, total_row], ignore_index=True)
 
             # =======================
-            # 7) Color (misma lógica de antes, usando la peor variación entre G.ADMN y COSS)
+            # 7) Color (misma lógica: usamos la peor variación entre G.ADMN y COSS)
             # =======================
             def color_fila(row):
                 if row["ceco"] == "TOTAL":
@@ -3889,17 +3830,12 @@ else:
             )
 
             # =======================
-            # 8) Gráfico (se deja “igual” conceptualmente: REAL vs PPT, pero ahora sumando G.ADMN + COSS)
+            # 8) Gráfico (REAL vs PPT) sumando G.ADMN + COSS, manteniendo el look & feel
             # =======================
             tabla_graf = tabla_final[tabla_final["ceco"] != "TOTAL"].copy()
 
             if not tabla_graf.empty:
-                # reconstruir PPT/REAL totales para el gráfico (sin mostrarlos en tabla)
-                # (los recalculamos desde los pivots ya filtrados)
-                tmp_ppt = ppt_piv.rename(columns={"PPT_GADM": "PPT_GADM", "PPT_COSS": "PPT_COSS"}).copy()
-                tmp_real = real_piv.rename(columns={"REAL_GADM": "REAL_GADM", "REAL_COSS": "REAL_COSS"}).copy()
-
-                tmp = tmp_ppt.merge(tmp_real, on="CeCo_A", how="outer").fillna(0.0)
+                tmp = ppt_piv.merge(real_piv, on="CeCo_A", how="outer").fillna(0.0)
                 tmp["PPT_TOTAL"] = tmp["PPT_GADM"] + tmp["PPT_COSS"]
                 tmp["REAL_TOTAL"] = tmp["REAL_GADM"] + tmp["REAL_COSS"]
 
@@ -3966,6 +3902,8 @@ else:
             proyectos_seleccionados=proyecto_codigo,
             df_cecos=df_cecos
         )
+
+
 
 
 
