@@ -2161,7 +2161,7 @@ else:
                 </style>
             """, unsafe_allow_html=True)
 
-            st.subheader("Departamentos")
+            st.subheader("Departamentos OH")
             st.dataframe(
                 tabla_final.style
                     .apply(color_fila, axis=1)
@@ -2196,7 +2196,7 @@ else:
                     )
 
                 fig.update_layout(
-                    title=f"Departamentos — REAL vs PPT ({', '.join(meses_seleccionado)})",
+                    title=f"Departamentos — REAL vs PPT",
                     xaxis_title="CeCo",
                     yaxis_title="MXN",
                     barmode="group",
@@ -2205,7 +2205,7 @@ else:
                     xaxis_tickangle=-25
                 )
 
-                st.markdown("### 📊 Gráfico Departamentos")
+                st.markdown("###Gráfico Departamentos")
                 st.plotly_chart(fig, use_container_width=True)
 
             return tabla_final
@@ -2535,7 +2535,7 @@ else:
                     )
 
                 fig.update_layout(
-                    title=f"Departamentos — REAL vs PPT ({', '.join(meses_seleccionado)})",
+                    title=f"Departamentos — REAL vs PPT",
                     xaxis_title="CeCo",
                     yaxis_title="MXN",
                     barmode="group",
@@ -3903,6 +3903,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
                     
+
 
 
 
