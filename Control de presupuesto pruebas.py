@@ -2875,7 +2875,7 @@ else:
             tabla["%"] = np.where(tabla["PPT"] != 0, (tabla["REAL"] / tabla["PPT"]) - 1, 0)
 
             # ===== NUEVA COLUMNA: DIF / INGRESO REAL =====
-            tabla["DIF/INGRESO_REAL"] = np.where(
+            tabla["%Ingreso"] = np.where(
                 ingreso_real_total != 0,
                 tabla["DIF"] / ingreso_real_total,
                 0
@@ -2889,7 +2889,7 @@ else:
                     "REAL": "${:,.2f}",
                     "DIF": "${:,.2f}",
                     "%": "{:.2%}",
-                    "DIF/INGRESO_REAL": "{:.2%}",
+                    "%Ingreso": "{:.2%}",
                 }),
                 use_container_width=True
             )
@@ -3903,6 +3903,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
                     
+
 
 
 
