@@ -1570,9 +1570,8 @@ else:
 
             ing_pro  = float(st.session_state.get("PROY_ingreso_pro_fut", 0.0) or 0.0)
             coss_pro_total = float(st.session_state.get("PROY_coss_pro", 0.0) or 0.0)
-            patio_pro_val  = float(st.session_state.get("PROY_patio_pro", 0.0) or 0.0)
             gadm_pro = float(st.session_state.get("PROY_gadmn_pro", 0.0) or 0.0)
-            coss_total_pro = coss_pro_total + patio_pro_val
+            coss_total_pro = coss_pro_total
             uo_pro = ing_pro - coss_total_pro - gadm_pro
 
             k1, k2, k3, k4, k5 = st.columns(5)
@@ -2683,16 +2682,16 @@ else:
             )
 
 
-            tabla_graf = tabla_nominal[tabla_nominal["Ceco"] != "TOTAL"].copy()
+            tabla_graf = tabla_nominal[tabla_nominal["ceco"] != "TOTAL"].copy()
 
             if not tabla_graf.empty:
-                tabla_graf["Ceco"] = tabla_graf["Ceco"].astype(str)
+                tabla_graf["ceco"] = tabla_graf["ceco"].astype(str)
                 es_esgari = str(proyecto_nombre).strip().upper() == "ESGARI"
 
                 fig = go.Figure()
 
                 fig.add_bar(
-                    x=tabla_graf["Ceco"],
+                    x=tabla_graf["ceco"],
                     y=tabla_graf["REAL"],
                     name="REAL",
                     text=[f"${v:,.0f}" for v in tabla_graf["REAL"]],
@@ -2702,7 +2701,7 @@ else:
                 )
 
                 fig.add_bar(
-                    x=tabla_graf["Ceco"],
+                    x=tabla_graf["ceco"],
                     y=tabla_graf["PPT"],
                     name="PPT",
                     text=[f"${v:,.0f}" for v in tabla_graf["PPT"]],
@@ -3308,12 +3307,27 @@ else:
             except:
                 return 0.0
 
+        # ---- preparar df_junto (costos proyectados por proyecto) desde session_state
+        df_j = st.session_state.get("PROY_df_junto", pd.DataFrame())
+        if isinstance(df_j, pd.DataFrame) and not df_j.empty:
+            df_j = df_j.copy()
+            if "Proyecto_A" in df_j.columns:
+                df_j["Proyecto_A"] = df_j["Proyecto_A"].astype(str).str.strip().str.replace(".0", "", regex=False)
+            if "Clasificacion_A" in df_j.columns:
+                df_j["Clasificacion_A"] = df_j["Clasificacion_A"].astype(str).str.strip()
+            if "Neto_A" in df_j.columns:
+                df_j["Neto_A"] = pd.to_numeric(df_j["Neto_A"], errors="coerce").fillna(0.0)
+        else:
+            df_j = pd.DataFrame(columns=["Proyecto_A", "Clasificacion_A", "Neto_A"])
+
         real_pct = {}
         proy_pct = {}
 
         for nombre, codigo in zip(nombres, codigos):
             codigo_str = _norm_proy_code(codigo)
             codigo_list = [codigo_str]
+
+            # REAL (% utilidad operativa)
             er_real = estado_resultado(
                 df_real,
                 meses_sel,
@@ -3322,12 +3336,22 @@ else:
                 list_pro
             )
             real_pct[nombre] = float(er_real.get("por_utilidad_operativa", 0) or 0)
+
+            # PROYECTADO
             ing_pro = _get_proy_value("PROY_df_proyeccion", codigo_str)
-            coss_pro = _get_proy_value("PROY_df_coss_pro", codigo_str)
-            patio_pro = _get_proy_value("PROY_df_patio_pro", codigo_str)
-            gadm_pro = _get_proy_value("PROY_df_gadmn_pro", codigo_str)
-            coss_total_pro = coss_pro + patio_pro
-            uo_pro = ing_pro - coss_total_pro - gadm_pro
+
+            coss_pro = float(df_j.loc[
+                (df_j["Proyecto_A"] == codigo_str) & (df_j["Clasificacion_A"] == "COSS"),
+                "Neto_A"
+            ].sum())
+
+            gadm_pro = float(df_j.loc[
+                (df_j["Proyecto_A"] == codigo_str) & (df_j["Clasificacion_A"] == "G.ADMN"),
+                "Neto_A"
+            ].sum())
+
+            # OJO: utilidad operativa como la vienes manejando (sin OH)
+            uo_pro = float(ing_pro) - float(coss_pro) - float(gadm_pro)
             proy_pct[nombre] = (uo_pro / ing_pro) if ing_pro else 0.0
 
         ppt_pct = {n: objetivo_uo.get(n, 0) for n in nombres}
@@ -3347,25 +3371,25 @@ else:
 
         fig.add_bar(
             x=nombres,
-            y=[ppt_pct[n] for n in nombres],
+            y=[ppt_pct.get(n, 0) for n in nombres],
             name="PPT",
-            text=[f"{ppt_pct[n]*100:.2f}%" for n in nombres],
+            text=[f"{ppt_pct.get(n, 0)*100:.2f}%" for n in nombres],
             textposition="inside"
         )
 
         fig.add_bar(
             x=nombres,
-            y=[real_pct[n] for n in nombres],
+            y=[real_pct.get(n, 0) for n in nombres],
             name="REAL",
-            text=[f"{real_pct[n]*100:.2f}%" for n in nombres],
+            text=[f"{real_pct.get(n, 0)*100:.2f}%" for n in nombres],
             textposition="inside"
         )
 
         fig.add_bar(
             x=nombres,
-            y=[proy_pct[n] for n in nombres],
+            y=[proy_pct.get(n, 0) for n in nombres],
             name="PROYECTADO",
-            text=[f"{proy_pct[n]*100:.2f}%" for n in nombres],
+            text=[f"{proy_pct.get(n, 0)*100:.2f}%" for n in nombres],
             textposition="inside"
         )
 
@@ -3381,8 +3405,6 @@ else:
 
         st.markdown("Utilidad Operativa")
         st.plotly_chart(fig, use_container_width=True)
-
-
         
     elif selected == "Modificaciones":
         st.subheader("Cambios base de datos")
@@ -3819,6 +3841,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
