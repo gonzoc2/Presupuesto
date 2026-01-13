@@ -114,6 +114,16 @@ def filtro_meses(col, df_ppt):
         mes = col.selectbox("Selecciona un mes", meses_disponibles)
         return [mes]
 
+    elif selected == "OH":
+        mes_act = meses_disponibles[-1] if meses_disponibles else None
+        index_default = meses_disponibles.index(mes_act) if mes_act in meses_disponibles else 0
+        mes_sel = col.selectbox("Selecciona mes corte (YTD)", meses_disponibles, index=index_default)
+        idx = meses_disponibles.index(mes_sel)
+        return meses_disponibles[:idx + 1]
+
+    else:
+        return col.multiselect("Selecciona un mes", meses_disponibles, default=[meses_disponibles[0]] if meses_disponibles else [])]
+
 def porcentaje_ingresos(df, meses, pro, codigo_pro):
     if pro == "ESGARI":
         por_ingre = 1
@@ -3856,6 +3866,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
