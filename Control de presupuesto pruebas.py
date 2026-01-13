@@ -1503,7 +1503,7 @@ else:
             if ppt == 0:
                 return "0.0%"
             return f"{((real / ppt) - 1) * 100:+.1f}%"
-        def uo_objetivos_en_tablero(df_ppt, df_real, df_2025, fecha_actualizacion, proyectos, list_pro, meses_sel):
+        def uo_objetivos_en_tablero(df_ppt, df_real, fecha_actualizacion, proyectos, list_pro, meses_sel):
             """
             Tabla + gráfica de % Utilidad Operativa por proyecto:
             PPT (objetivo_uo) vs REAL (estado_resultado) vs PROYECTADO (histórico ingreso + fijos LM + variables mes actual)
@@ -1655,7 +1655,7 @@ else:
                 codigo_list = [codigo_str]
                 er_real = estado_resultado(df_real, meses_sel, nombre, codigo_list, list_pro)
                 real_pct[nombre] = float(er_real.get("por_utilidad_operativa", 0) or 0.0)
-                base = df_2025 if "df_2025" in locals() and df_2025 is not None else df_real
+                base = df_real if "df_real" in locals() and df_real is not None else df_real
                 proy_pct[nombre] = calc_pct_uo_proy(
                     df_base=base,
                     fecha_actualizacion=fecha_actualizacion,
@@ -1855,7 +1855,6 @@ else:
         uo_objetivos_en_tablero(
             df_ppt=df_ppt,
             df_real=df_real,
-            df_2025=df_2025,
             fecha_actualizacion=fecha_actualizacion,
             proyectos=proyectos,
             list_pro=list_pro,
@@ -3868,6 +3867,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
