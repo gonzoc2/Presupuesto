@@ -122,7 +122,7 @@ def filtro_meses(col, df_ppt):
         return meses_disponibles[:idx + 1]
 
     else:
-        return col.multiselect("Selecciona un mes", meses_disponibles, default=[meses_disponibles[0]] if meses_disponibles else [])]
+        return col.multiselect("Selecciona un mes", meses_disponibles, default=[meses_disponibles[0]] if meses_disponibles else [])
 
 def porcentaje_ingresos(df, meses, pro, codigo_pro):
     if pro == "ESGARI":
@@ -3866,6 +3866,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
