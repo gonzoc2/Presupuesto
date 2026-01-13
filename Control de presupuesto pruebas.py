@@ -3366,7 +3366,7 @@ else:
                 df[col] = df[col].astype(str).str.strip().str.replace(".0", "", regex=False)
             return df
 
-        def ingreso_proy_historico(df_2025, fecha_actualizacion, mes_act, codigo_list, pro_nombre):
+        def ingreso_proy_historico(df_real, fecha_actualizacion, mes_act, codigo_list, pro_nombre):
             ingreso_sem = "https://docs.google.com/spreadsheets/d/14l6QLudSBpqxmfuwRqVxCXzhSFzRL0AqWJqVuIOaFFQ/export?format=xlsx"
             df = cargar_datos(ingreso_sem)
 
@@ -3388,7 +3388,7 @@ else:
             df_merged = pd.merge(df_va, df_fin, on="proyecto", suffixes=("_va", "_fin"), how="inner")
             df_merged["ingreso_dividido"] = df_merged["ingreso_va"] / df_merged["ingreso_fin"]
 
-            df_proyeccion = df_2025[df_2025["Mes_A"] == mes_act].copy()
+            df_proyeccion = df_real[df_real["Mes_A"] == mes_act].copy()
             df_proyeccion = _safe_str(df_proyeccion, "Proyecto_A")
 
             df_proyeccion = df_proyeccion.groupby(["Proyecto_A", "Categoria_A"], as_index=False)["Neto_A"].sum()
@@ -3418,15 +3418,15 @@ else:
                 df_proyeccion = df_proyeccion[df_proyeccion["Proyecto_A"].astype(str).isin(cods)]
 
             return float(df_proyeccion["Neto_A"].sum() or 0.0)
-        def calc_pct_uo_proy_hist_lm_var_mes_actual(df_2025, fecha_actualizacion, mes_act, mes_ant_lm, codigo_list, pro_nombre):
+        def calc_pct_uo_proy_hist_lm_var_mes_actual(df_real, fecha_actualizacion, mes_act, mes_ant_lm, codigo_list, pro_nombre):
             costos_variables = ["FLETES", "CASETAS", "COMBUSTIBLE", "OTROS COSS", "INGRESO"]
 
-            ingreso_proy = ingreso_proy_historico(df_2025, fecha_actualizacion, mes_act, codigo_list, pro_nombre)
+            ingreso_proy = ingreso_proy_historico(df_real, fecha_actualizacion, mes_act, codigo_list, pro_nombre)
             if abs(ingreso_proy) < 1e-9:
                 return 0.0
 
             # FIJOS LM (NO variables)
-            df_fix = df_2025[df_2025["Mes_A"] == mes_ant_lm].copy()
+            df_fix = df_real[df_real["Mes_A"] == mes_ant_lm].copy()
             df_fix = _safe_str(df_fix, "Proyecto_A")
             df_fix = df_fix[~df_fix["Categoria_A"].isin(costos_variables)]
 
@@ -3437,7 +3437,7 @@ else:
             df_fix = df_fix[~df_fix["Proyecto_A"].astype(str).isin(["8002", "8003", "8004"])]
 
             # VARIABLES MES ACTUAL (normaliza por ingreso real mes actual y escala a ingreso_proy)
-            df_var = df_2025[df_2025["Mes_A"] == mes_act].copy()
+            df_var = df_real[df_real["Mes_A"] == mes_act].copy()
             df_var = _safe_str(df_var, "Proyecto_A")
             df_var = df_var[df_var["Categoria_A"].isin(costos_variables)]
 
@@ -3457,7 +3457,7 @@ else:
                 df_var_proj["Neto_A"] = df_var_proj["Neto_normalizado"] * ingreso_proy
 
             # PATIO LM suma a COSS
-            patio_pro = float(patio(df_2025, [mes_ant_lm], codigo_list, pro_nombre) or 0.0)
+            patio_pro = float(patio(df_real, [mes_ant_lm], codigo_list, pro_nombre) or 0.0)
 
             df_junto = pd.concat([df_fix, df_var_proj], ignore_index=True)
 
@@ -3486,7 +3486,7 @@ else:
 
             # PROYECTADO (forzado: ingreso histórico + fijos LM + variables mes actual)
             proy_pct[nombre] = calc_pct_uo_proy_hist_lm_var_mes_actual(
-                df_2025=df_2025,
+                df_real=df_real,
                 fecha_actualizacion=fecha_actualizacion,
                 mes_act=mes_act,
                 mes_ant_lm=mes_ant_lm,
@@ -3983,6 +3983,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
