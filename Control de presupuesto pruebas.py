@@ -1348,17 +1348,57 @@ else:
 
     df_ppt_n  = _norm_proy_col(df_ppt,  "Proyecto_A")
     df_real_n = _norm_proy_col(df_real, "Proyecto_A")
-    meses_disponibles = [m for m in meses_ordenados if m in df_real_n["Mes_A"].unique()]
+
+    meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
+    idx_mes = {m: i for i, m in enumerate(meses_ordenados)}
+
+    def _prev_mes(m):
+        i = idx_mes.get(m, None)
+        if i is None:
+            return None
+        return meses_ordenados[i - 1]  
+    meses_real_unicos = (
+        df_real_n["Mes_A"].astype(str).str.strip().unique().tolist()
+        if "Mes_A" in df_real_n.columns else []
+    )
+    meses_disponibles = [m for m in meses_ordenados if m in meses_real_unicos]
+
     if len(meses_disponibles) < 2:
         st.warning("No hay suficientes meses en REAL para calcular mes actual y mes anterior.")
         st.stop()
 
-    mes_ant = meses_disponibles[-2]
-    mes_act = meses_disponibles[-1]
     fecha_url = "https://docs.google.com/spreadsheets/d/1HAZKds5buqJdpq9053T-X9WjxWvITWhNaO7CnSTnoWA/export?format=xlsx"
     fecha_actualizacion = cargar_datos(fecha_url)
-    fecha_completa = fecha_actualizacion["fecha"].iloc[0]
-    fecha_act = int(fecha_completa.day)
+
+    if "fecha" not in fecha_actualizacion.columns or fecha_actualizacion.empty:
+        st.warning("No se encontró la columna 'fecha' en fecha_actualizacion; usaré los últimos meses disponibles en REAL.")
+        mes_act = meses_disponibles[-1]
+        mes_ant = meses_disponibles[-2]
+        fecha_act = None
+    else:
+        fecha_actualizacion["fecha"] = pd.to_datetime(fecha_actualizacion["fecha"], errors="coerce")
+        fecha_valida = fecha_actualizacion.dropna(subset=["fecha"])
+
+        if fecha_valida.empty:
+            st.warning("La columna 'fecha' no tiene valores válidos; usaré los últimos meses disponibles en REAL.")
+            mes_act = meses_disponibles[-1]
+            mes_ant = meses_disponibles[-2]
+            fecha_act = None
+        else:
+            fecha_completa = fecha_valida["fecha"].max()  
+            fecha_act = int(fecha_completa.day)
+            mes_act = meses_ordenados[int(fecha_completa.month) - 1]
+            mes_ant = _prev_mes(mes_act)
+            if mes_act not in meses_disponibles or mes_ant not in meses_disponibles:
+                st.warning(
+                    f"Mes(es) por fecha de actualización no disponibles en REAL (mes_act={mes_act}, mes_ant={mes_ant}). "
+                    "Usaré los últimos meses disponibles en REAL."
+                )
+                mes_act = meses_disponibles[-1]
+                mes_ant = meses_disponibles[-2]
+
+    st.session_state["PROY_fecha_actualizacion"] = str(fecha_completa) if "fecha_completa" in locals() else None
+    st.session_state["PROY_fecha_act_dia"] = fecha_act
 
     ingreso_sem = "https://docs.google.com/spreadsheets/d/14l6QLudSBpqxmfuwRqVxCXzhSFzRL0AqWJqVuIOaFFQ/export?format=xlsx"
     df_ing = cargar_datos(ingreso_sem)
@@ -1481,7 +1521,6 @@ else:
     st.session_state["PROY_df_proyeccion"] = df_proyeccion
     st.session_state["PROY_df_ing"] = df_ing
     st.session_state["PROY_df_merged"] = df_merged
-
 
     if selected == "Tablero":
 
@@ -2689,53 +2728,70 @@ else:
                 es_esgari = str(proyecto_nombre).strip().upper() == "ESGARI"
 
                 fig = go.Figure()
-
                 fig.add_bar(
                     x=tabla_graf["ceco"],
-                    y=tabla_graf["REAL"],
-                    name="REAL",
-                    text=[f"${v:,.0f}" for v in tabla_graf["REAL"]],
+                    y=tabla_graf["GADM. REAL"],
+                    name="G.ADMN REAL",
+                    text=[f"${v:,.0f}" for v in tabla_graf["GADM. REAL"]],
                     textposition="outside",
                     texttemplate="%{text}",
                     cliponaxis=False,
                 )
-
                 fig.add_bar(
                     x=tabla_graf["ceco"],
-                    y=tabla_graf["PPT"],
-                    name="PPT",
-                    text=[f"${v:,.0f}" for v in tabla_graf["PPT"]],
+                    y=tabla_graf["GADM. PPT"],
+                    name="G.ADMN PPT",
+                    text=[f"${v:,.0f}" for v in tabla_graf["GADM. PPT"]],
                     textposition="outside",
                     texttemplate="%{text}",
                     cliponaxis=False,
                 )
-
-                y_max = float(max(tabla_graf["REAL"].max(), tabla_graf["PPT"].max()) or 0.0)
+                fig.add_bar(
+                    x=tabla_graf["ceco"],
+                    y=tabla_graf["COSS REAL"],
+                    name="COSS REAL",
+                    text=[f"${v:,.0f}" for v in tabla_graf["COSS REAL"]],
+                    textposition="outside",
+                    texttemplate="%{text}",
+                    cliponaxis=False,
+                )
+                fig.add_bar(
+                    x=tabla_graf["ceco"],
+                    y=tabla_graf["COSS PPT"],
+                    name="COSS PPT",
+                    text=[f"${v:,.0f}" for v in tabla_graf["COSS PPT"]],
+                    textposition="outside",
+                    texttemplate="%{text}",
+                    cliponaxis=False,
+                )
+                y_max = float(
+                    max(
+                        tabla_graf["GADM. REAL"].max(),
+                        tabla_graf["GADM. PPT"].max(),
+                        tabla_graf["COSS REAL"].max(),
+                        tabla_graf["COSS PPT"].max(),
+                        0.0
+                    ) or 0.0
+                )
                 y_range_max = y_max * (1.30 if es_esgari else 1.18) if y_max > 0 else 1
 
                 fig.update_layout(
-                    title="Departamentos",
+                    title="Departamentos (G.ADMN y COSS)",
                     xaxis_title="Departamento",
                     yaxis_title="MXN",
                     barmode="group",
-                    height=(700 if es_esgari else 520),  
+                    height=(700 if es_esgari else 520),
                     hovermode="x unified",
-                    xaxis_tickangle=(-45 if es_esgari else -25), 
+                    xaxis_tickangle=(-45 if es_esgari else -25),
                     yaxis=dict(range=[0, y_range_max]),
-                    margin=dict(t=90, b=140 if es_esgari else 80),  
+                    margin=dict(t=90, b=140 if es_esgari else 80),
+                    legend_title_text="Serie"
                 )
-
                 if es_esgari:
                     fig.update_traces(textposition="outside")
-                    fig.update_layout(
-                        uniformtext_minsize=8,
-                        uniformtext_mode="show"   
-                    )
+                    fig.update_layout(uniformtext_minsize=8, uniformtext_mode="show")
                 else:
-                    fig.update_layout(
-                        uniformtext_minsize=10,
-                        uniformtext_mode="hide"
-                    )
+                    fig.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")
 
                 st.markdown("Gráfico Departamentos")
                 st.plotly_chart(fig, use_container_width=True)
@@ -3841,6 +3897,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
