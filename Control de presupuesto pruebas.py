@@ -1217,7 +1217,7 @@ else:
             menu_title=None,
             options=["Tablero", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones","Proyección","YTD","Mensual", "Modificaciones", "Dashboard"],
             icons=[
-            "speedometer2",
+            "clipboard-data",
             "cash-coin",          # Ingresos
             "building",           # OH (Overhead / oficinas)
             "diagram-3",          # Departamentos
@@ -1225,11 +1225,11 @@ else:
             "search",             # Consulta
             "calendar-month",     # Meses PPT
             "arrow-left-right",
-            "table",  
+            "graph-up-arrow",  
             "bar-chart-line",
-            "clipboard-check",
+            "calendar-month",
             "tools",
-            "clipboard-data",
+            "speedometer2",
         ],
             default_index=0,
             orientation="horizontal",
@@ -1238,7 +1238,7 @@ else:
         selected = option_menu(
         menu_title=None,
         options=["Tablero", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Proyección","YTD","Mensual", "Modificaciones", "Dashboard"],
-        icons=["speedometer2", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "table", "bar-chart-line", "clipboard-check", "tools", "clipboard-data"],
+        icons=["clipboard-data", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "graph-up-arrow", "bar-chart-line", "calendar-month", "tools", "speedometer2"],
         default_index=0,
         orientation="horizontal",)
 
@@ -3743,7 +3743,7 @@ else:
 
             df_plot = df_plot.set_index("CECO")[["G.ADMN PROY", "G.ADMN PPT", "COSS PROY", "COSS PPT"]]
 
-            st.subheader("Comparativo por CECO (Top diferencias)")
+            st.subheader("Comparativo por CECO")
             st.bar_chart(df_plot)
 
 
@@ -3872,10 +3872,10 @@ else:
                     "PROYECTO": nombre,
                     "COSS S/INGRESO": coss_calc,
                     "COSS REAL": coss_total_real,
-                    "DIF. COSS": coss_calc - coss_total_real,
+                    "DIF. COSS": coss_total_real - coss_calc,
                     "G.ADM S/INGRESO": gadm_calc,
                     "G.ADM REAL": gadm_real,
-                    "DIF. G.ADM": gadm_calc - gadm_real,
+                    "DIF. G.ADM": gadm_real - gadm_calc,
                 })
 
             tabla = pd.DataFrame(rows).fillna(0.0)
@@ -3938,25 +3938,9 @@ else:
             return tabla_out
         c1, c2 = st.columns([2, 3])
         meses_seleccionado = filtro_meses(c1, df_ppt)
-        df_proyectos_local = proyectos.copy()
-        df_proyectos_local["proyectos"] = df_proyectos_local["proyectos"].astype(str).str.strip().str.replace(".0", "", regex=False)
-        df_proyectos_local["nombre"] = df_proyectos_local["nombre"].astype(str).str.strip()
-        opciones = (
-            df_proyectos_local[["proyectos","nombre"]]
-            .dropna()
-            .drop_duplicates()
-            .sort_values(["nombre","proyectos"])
-            .apply(lambda r: f"{r['proyectos']} - {r['nombre']}", axis=1)
-            .tolist()
-        )
+        proyecto_codigo, proyecto_nombre = filtro_pro(c2)
+        proyectos_filtrados = None if proyecto_nombre == "ESGARI" else proyecto_codigo
 
-        seleccion = c2.multiselect(
-            "Filtrar proyectos (vacío = TODOS)",
-            options=opciones,
-            default=[]
-        )
-
-        proyectos_filtrados = [x.split(" - ")[0].strip() for x in seleccion] if seleccion else None
         if meses_seleccionado:
             _tabla = tabla_proyectos(
                 df_ppt=df_ppt,
@@ -4086,8 +4070,8 @@ else:
             factor = (ing_real_total / ing_ppt_total) if abs(ing_ppt_total) > 1e-9 else 0.0
             base["GADM S/INGRESOS"] = base["GADM_PPT_CECO"] * factor
             base["COSS S/INGRESO"]  = base["COSS_PPT_CECO"] * factor
-            base["DIF. GADM"] = base["GADM S/INGRESOS"] - base["GADM_REAL"]
-            base["DIF COSS"]  = base["COSS S/INGRESO"] - base["COSS_REAL"]
+            base["DIF. GADM"] = base["GADM_REAL"] - base["GADM S/INGRESOS"]
+            base["DIF COSS"]  = base["COSS_REAL"] - base["COSS S/INGRESO"]
             dfm = df_cecos.copy()
             dfm["ceco"] = dfm["ceco"].astype(str).str.strip()
             dfm["nombre"] = dfm["nombre"].astype(str).str.strip() if "nombre" in dfm.columns else dfm["ceco"]
@@ -4137,10 +4121,10 @@ else:
                 df_plot["ABS_DIF"] = df_plot["DIF. GADM"].abs() + df_plot["DIF COSS"].abs()
                 df_plot = df_plot.sort_values("ABS_DIF", ascending=False).head(top_n)
 
-                st.subheader("Gráfico — COSS (Real vs S/Ingreso) por CECO")
+                st.subheader("Gráfico — COSS")
                 st.bar_chart(df_plot.set_index("CECO")[["COSS_REAL", "COSS S/INGRESO"]])
 
-                st.subheader("Gráfico — G.ADMN (Real vs S/Ingreso) por CECO")
+                st.subheader("Gráfico — G.ADMN")
                 st.bar_chart(df_plot.set_index("CECO")[["GADM_REAL", "GADM S/INGRESOS"]])
 
             return out
@@ -4574,6 +4558,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
