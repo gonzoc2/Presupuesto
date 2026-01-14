@@ -1215,9 +1215,9 @@ else:
     if st.session_state["rol"] in ["admin"] and "ESGARI" in st.session_state["proyectos"]:
         selected = option_menu(
             menu_title=None,
-            options=["Tablero", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones","Mensual","YTD","Real", "Modificaciones", "Dashboard"],
+            options=["Tablero", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones","Proyección","YTD","Mensual", "Modificaciones", "Dashboard"],
             icons=[
-            "clipboard-data",
+            "speedometer2",
             "cash-coin",          # Ingresos
             "building",           # OH (Overhead / oficinas)
             "diagram-3",          # Departamentos
@@ -1225,10 +1225,11 @@ else:
             "search",             # Consulta
             "calendar-month",     # Meses PPT
             "arrow-left-right",
-            "bar-chart",  
-            "calendar-range",
+            "table",  
+            "bar-chart-line",
+            "clipboard-check",
             "tools",
-            "speedometer2",
+            "clipboard-data",
         ],
             default_index=0,
             orientation="horizontal",
@@ -1236,8 +1237,8 @@ else:
     elif st.session_state["rol"] == "director" or st.session_state["rol"] == "admin":
         selected = option_menu(
         menu_title=None,
-        options=["Tablero", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Mensual","YTD","Real", "Modificaciones", "Dashboard"],
-        icons=["clipboard-data", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "bar-chart", "calendar-range", "tools", "speedometer2"],
+        options=["Tablero", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Proyección","YTD","Mensual", "Modificaciones", "Dashboard"],
+        icons=["speedometer2", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "table", "bar-chart-line", "clipboard-check", "tools", "clipboard-data"],
         default_index=0,
         orientation="horizontal",)
 
@@ -3527,7 +3528,7 @@ else:
                 ceco_codigo 
             )
 
-    elif selected == "Mensual":
+    elif selected == "Proyección":
 
         def tabla_mensual(df_ppt, meses_seleccionado, proyectos_seleccionados, df_cecos):
             MESES_ORDENADOS = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
@@ -3544,8 +3545,6 @@ else:
                 if s.endswith(".0"):
                     s = s[:-2]
                 return s
-
-            # ---- normaliza inputs
             if isinstance(meses_seleccionado, str):
                 meses_sel = [norm_mes(meses_seleccionado)]
             else:
@@ -3561,8 +3560,6 @@ else:
             if not proyectos_sel:
                 st.error("Favor de seleccionar por lo menos un proyecto")
                 return None, None
-
-            # ---- normaliza df_ppt
             df_ppt = df_ppt.copy()
             df_ppt["Proyecto_A"] = df_ppt["Proyecto_A"].apply(norm_proy)
             df_ppt["CeCo_A"] = df_ppt["CeCo_A"].astype(str).str.strip()
@@ -3576,13 +3573,9 @@ else:
 
             df_ppt["Neto_A"] = pd.to_numeric(df_ppt["Neto_A"], errors="coerce").fillna(0.0)
 
-            EXCLUIR = {"8002", "8003", "8004", "0"}
-
-            # 🔑 OJO: con tu filtro_pro(), si eliges ESGARI te manda lista de TODOS los códigos
-            proyectos_base = [p for p in proyectos_sel if p not in EXCLUIR]
-
+            proyectos_base = proyectos_sel[:]  
             if not proyectos_base:
-                st.warning("No hay proyectos válidos (después de excluir 8002/8003/8004/0).")
+                st.warning("No hay proyectos seleccionados.")
                 return None, None
 
             def _norm_clas(s):
@@ -3691,8 +3684,6 @@ else:
 
             base["GADM_PROY."] = base["share_gadm"] * gadm_proy_total
             base["COSS_PROY."] = base["share_coss"] * coss_proy_total
-
-            # ✅ map CECO -> NOMBRE (mostrar nombre, no código)
             df_cecos_map = df_cecos.copy()
             df_cecos_map["ceco"] = df_cecos_map["ceco"].astype(str).str.strip()
             df_cecos_map["nombre"] = df_cecos_map["nombre"].astype(str).str.strip()
@@ -3708,7 +3699,6 @@ else:
             t1 = base[["CECO", "GADM_PROY.", "PPT_GADM", "COSS_PROY.", "PPT_COSS"]].copy()
             t1["DIF GADM"] = t1["GADM_PROY."] - t1["PPT_GADM"]
             t1["DIF COSS"] = t1["COSS_PROY."] - t1["PPT_COSS"]
-
             t1 = t1.rename(columns={
                 "GADM_PROY.": "G.ADMN PROY",
                 "PPT_GADM":   "G.ADMN PPT",
@@ -3716,6 +3706,7 @@ else:
                 "PPT_COSS":   "COSS PPT",
             })[["CECO", "G.ADMN PROY", "G.ADMN PPT", "DIF GADM", "COSS PROY", "COSS PPT", "DIF COSS"]]
 
+            # TOTAL
             total_1 = pd.DataFrame([{
                 "CECO": "TOTAL",
                 "G.ADMN PROY": float(t1["G.ADMN PROY"].sum()),
@@ -3727,36 +3718,39 @@ else:
             }])
 
             t1 = pd.concat([t1, total_1], ignore_index=True)
+            cols_money = ["G.ADMN PROY", "G.ADMN PPT", "DIF GADM", "COSS PROY", "COSS PPT", "DIF COSS"]
 
-            st.subheader("Mensual")
-            st.dataframe(
-                t1.style.format({
-                    "G.ADMN PROY": "${:,.2f}",
-                    "G.ADMN PPT":  "${:,.2f}",
-                    "DIF GADM":    "${:,.2f}",
-                    "COSS PROY":   "${:,.2f}",
-                    "COSS PPT":    "${:,.2f}",
-                    "DIF COSS":    "${:,.2f}",
-                }),
-                use_container_width=True
+            def _fmt_currency(x):
+                try:
+                    return f"${float(x):,.0f}"
+                except:
+                    return "$0"
+
+            def _highlight_total(row):
+                return ["font-weight:700; background-color: #f2f2f2;" if row["CECO"] == "TOTAL" else "" for _ in row]
+
+            styled = (
+                t1.style
+                .format({c: _fmt_currency for c in cols_money})
+                .apply(_highlight_total, axis=1)
             )
 
+            st.dataframe(styled, use_container_width=True, hide_index=True)
+            df_plot = t1[t1["CECO"] != "TOTAL"].copy()
+            top_n = 15
+            df_plot["ABS_DIF"] = (df_plot["DIF GADM"].abs() + df_plot["DIF COSS"].abs())
+            df_plot = df_plot.sort_values("ABS_DIF", ascending=False).head(top_n)
+
+            df_plot = df_plot.set_index("CECO")[["G.ADMN PROY", "G.ADMN PPT", "COSS PROY", "COSS PPT"]]
+
+            st.subheader("Comparativo por CECO (Top diferencias)")
+            st.bar_chart(df_plot)
+
+
             return t1, {"pct_gadm": pct_gadm, "pct_coss": pct_coss, "ing_proy_total": ing_proy_total}
-
-        # =========================
-        # UI (sin "Vista")
-        # =========================
-        st.title("Mensual")
         c1, c2 = st.columns([2, 3])
-
-        # Mes(es)
         meses_seleccionado = filtro_meses(c1, df_ppt)
-
-        # ✅ usa TU filtro_pro() (muestra todos cuando allowed == ["ESGARI"])
         proyecto_codigo, proyecto_nombre = filtro_pro(c2)
-
-        # ✅ df_cecos desde tu fuente global (como lo cargas en filtro_ceco)
-        #    aquí lo cargamos directo para evitar "amarillo" y para tener NOMBRE
         df_cecos_local = cargar_datos(cecos_url)
         df_cecos_local["ceco"] = df_cecos_local["ceco"].astype(str).str.strip()
         df_cecos_local["nombre"] = df_cecos_local["nombre"].astype(str).str.strip()
@@ -3764,14 +3758,13 @@ else:
         _t1, _stats = tabla_mensual(
             df_ppt=df_ppt,
             meses_seleccionado=meses_seleccionado,
-            proyectos_seleccionados=proyecto_codigo,  # <- lista de códigos
+            proyectos_seleccionados=proyecto_codigo,  
             df_cecos=df_cecos_local
         )
 
-
     elif selected == "YTD":
 
-        def tabla_proyectos(df_ppt, df_real, meses_seleccionado, df_proyectos):
+        def tabla_proyectos(df_ppt, df_real, meses_seleccionado, df_proyectos, proyectos_filtrados=None):
             if not meses_seleccionado:
                 st.error("Favor de seleccionar por lo menos un mes")
                 return None
@@ -3804,8 +3797,6 @@ else:
                 if s in ["INGRESOS", "ING", "VENTAS", "REVENUE"]:
                     return "INGRESO"
                 return s
-
-            # ✅ normaliza meses
             if isinstance(meses_seleccionado, str):
                 meses_sel = [norm_mes(meses_seleccionado)]
             else:
@@ -3824,8 +3815,6 @@ else:
 
             df_ppt = _norm_df(df_ppt)
             df_real = _norm_df(df_real)
-
-            # --- catálogo proyectos
             if df_proyectos is None or df_proyectos.empty:
                 st.warning("df_proyectos está vacío / None. No puedo armar la tabla YTD.")
                 return pd.DataFrame()
@@ -3834,28 +3823,13 @@ else:
             df_map["proyectos"] = df_map["proyectos"].apply(norm_proy)
             df_map["nombre"] = df_map["nombre"].astype(str).str.strip()
             mapa = dict(zip(df_map["proyectos"], df_map["nombre"]))
-
-            EXCLUIR = {"0", "8002", "8003", "8004"}
-
-            # ✅ RESPETA permisos del usuario (st.session_state["proyectos"])
-            allowed = [str(x).strip() for x in st.session_state.get("proyectos", []) if str(x).strip()]
-            allowed_set = set(allowed)
-
-            if allowed == ["ESGARI"]:
-                # admin/ESGARI: todos menos EXCLUIR
-                proyectos_visibles = [p for p in df_map["proyectos"].dropna().tolist() if p not in EXCLUIR]
-            else:
-                # usuario: solo los permitidos, menos EXCLUIR
-                proyectos_visibles = [
-                    p for p in df_map["proyectos"].dropna().tolist()
-                    if (p in allowed_set) and (p not in EXCLUIR)
-                ]
+            proyectos_visibles = df_map["proyectos"].dropna().astype(str).tolist()
+            if proyectos_filtrados:
+                sel_set = set([norm_proy(x) for x in proyectos_filtrados])
+                proyectos_visibles = [p for p in proyectos_visibles if p in sel_set]
 
             if not proyectos_visibles:
-                st.warning("Sin proyectos visibles para este usuario (revisa st.session_state['proyectos'] vs catálogo).")
-                with st.expander("🛠 Diagnóstico proyectos visibles", expanded=True):
-                    st.write("allowed:", allowed)
-                    st.write("cat proyectos (sample):", df_map["proyectos"].dropna().astype(str).unique().tolist()[:30])
+                st.warning("Sin proyectos para mostrar con el filtro actual.")
                 return pd.DataFrame()
 
             try:
@@ -3902,8 +3876,6 @@ else:
                     "G.ADM S/INGRESO": gadm_calc,
                     "G.ADM REAL": gadm_real,
                     "DIF. G.ADM": gadm_calc - gadm_real,
-                    "__ing_ppt": ing_ppt,
-                    "__ing_real": ing_real,
                 })
 
             tabla = pd.DataFrame(rows).fillna(0.0)
@@ -3912,6 +3884,7 @@ else:
                 st.warning("Sin filas para YTD (revisa filtros / catálogo proyectos).")
                 return tabla
 
+            # --- total
             total = pd.DataFrame([{
                 "PROYECTO": "TOTAL",
                 "COSS S/INGRESO": float(tabla["COSS S/INGRESO"].sum()),
@@ -3922,60 +3895,88 @@ else:
                 "DIF. G.ADM": float(tabla["DIF. G.ADM"].sum()),
             }])
 
-            tabla_out = pd.concat([tabla.drop(columns=["__ing_ppt", "__ing_real"]), total], ignore_index=True)
+            tabla_out = pd.concat([tabla, total], ignore_index=True)
 
-            st.subheader("YTD — COSS y G.ADMN")
+            # --- formato tabla
+            cols_money = ["COSS S/INGRESO","COSS REAL","DIF. COSS","G.ADM S/INGRESO","G.ADM REAL","DIF. G.ADM"]
+
+            def _fmt_currency(x):
+                try:
+                    return f"${float(x):,.0f}"
+                except:
+                    return "$0"
+
+            def _highlight_total(row):
+                if str(row.get("PROYECTO","")) == "TOTAL":
+                    return ["font-weight:700; background-color:#f2f2f2;" for _ in row]
+                return ["" for _ in row]
             st.dataframe(
-                tabla_out.style.format({
-                    "COSS S/INGRESO": "${:,.2f}",
-                    "COSS REAL": "${:,.2f}",
-                    "DIF. COSS": "${:,.2f}",
-                    "G.ADM S/INGRESO": "${:,.2f}",
-                    "G.ADM REAL": "${:,.2f}",
-                    "DIF. G.ADM": "${:,.2f}",
-                }),
+                tabla_out.style
+                    .format({c: _fmt_currency for c in cols_money})
+                    .apply(_highlight_total, axis=1),
                 use_container_width=True,
-                height=420
+                height=420,
+                hide_index=True
             )
 
+            st.subheader("Gráfico — COSS")
+
+            df_plot = tabla_out[tabla_out["PROYECTO"] != "TOTAL"].copy()
+            if not df_plot.empty:
+                df_plot["ABS_DIF"] = df_plot["DIF. COSS"].abs() + df_plot["DIF. G.ADM"].abs()
+                df_plot = df_plot.sort_values("ABS_DIF", ascending=False).head(15)
+
+                chart_coss = df_plot.set_index("PROYECTO")[["COSS S/INGRESO", "COSS REAL"]]
+                st.bar_chart(chart_coss)
+
+            st.subheader("Gráfico — G.ADMN")
+
+            if not df_plot.empty:
+                chart_gadm = df_plot.set_index("PROYECTO")[["G.ADM S/INGRESO", "G.ADM REAL"]]
+                st.bar_chart(chart_gadm)
+
             return tabla_out
-
-        # =========================
-        # UI (SIN BOTÓN)
-        # =========================
-        st.title("YTD")
-        c1, _ = st.columns([2, 3])
+        c1, c2 = st.columns([2, 3])
         meses_seleccionado = filtro_meses(c1, df_ppt)
+        df_proyectos_local = proyectos.copy()
+        df_proyectos_local["proyectos"] = df_proyectos_local["proyectos"].astype(str).str.strip().str.replace(".0", "", regex=False)
+        df_proyectos_local["nombre"] = df_proyectos_local["nombre"].astype(str).str.strip()
+        opciones = (
+            df_proyectos_local[["proyectos","nombre"]]
+            .dropna()
+            .drop_duplicates()
+            .sort_values(["nombre","proyectos"])
+            .apply(lambda r: f"{r['proyectos']} - {r['nombre']}", axis=1)
+            .tolist()
+        )
 
+        seleccion = c2.multiselect(
+            "Filtrar proyectos (vacío = TODOS)",
+            options=opciones,
+            default=[]
+        )
+
+        proyectos_filtrados = [x.split(" - ")[0].strip() for x in seleccion] if seleccion else None
         if meses_seleccionado:
             _tabla = tabla_proyectos(
                 df_ppt=df_ppt,
                 df_real=df_real,
                 meses_seleccionado=meses_seleccionado,
-                df_proyectos=proyectos  # ✅ catálogo global
+                df_proyectos=proyectos,              
+                proyectos_filtrados=proyectos_filtrados
             )
         else:
             st.info("Selecciona meses")
 
 
-    elif selected == "Real":
+    elif selected == "Mensual":
 
         col1, col2 = st.columns(2)
-
-        # Mes(es)
         meses_seleccionado = filtro_meses(col1, df_ppt)
-
-        # ✅ Proyecto(s): usa tu filtro_pro (si allowed==["ESGARI"] trae TODOS)
-        proyecto_codigo, proyecto_nombre = filtro_pro(col2)  # <- devuelve lista de códigos y el nombre
-
-        # ✅ Catálogo CECO para mostrar nombres (evita el "amarillo" y asegura nombres)
+        proyecto_codigo, proyecto_nombre = filtro_pro(col2) 
         df_cecos_local = cargar_datos(cecos_url)
         df_cecos_local["ceco"] = df_cecos_local["ceco"].astype(str).str.strip()
         df_cecos_local["nombre"] = df_cecos_local["nombre"].astype(str).str.strip()
-
-        # -------------------------
-        # Tabla por CECO
-        # -------------------------
         def tabla_real_vs_ppt_por_ceco(df_ppt, df_real, meses_seleccionado, proyectos_filtrados, df_cecos):
             MESES_ORDENADOS = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
             orden = {m: i for i, m in enumerate(MESES_ORDENADOS)}
@@ -4027,16 +4028,16 @@ else:
 
             df_ppt_n = _norm_df(df_ppt)
             df_real_n = _norm_df(df_real)
-
-            # ---- proyectos filtro (tu filtro_pro ya trae lista de códigos)
-            EXCLUIR = {"8002", "8003", "8004", "0"}
-            proyectos_base = [norm_proy(p) for p in (proyectos_filtrados or []) if norm_proy(p) not in EXCLUIR]
+            proyectos_base = [norm_proy(p) for p in (proyectos_filtrados or []) if str(p).strip()]
 
             if not proyectos_base:
-                st.warning("No hay proyectos válidos después de excluir 8002/8003/8004/0.")
-                return None
+                proys_ppt = df_ppt_n.loc[df_ppt_n["Mes_A"].isin(meses_sel), "Proyecto_A"].dropna().unique().tolist()
+                proys_real = df_real_n.loc[df_real_n["Mes_A"].isin(meses_sel), "Proyecto_A"].dropna().unique().tolist()
+                proyectos_base = sorted(set([norm_proy(x) for x in (proys_ppt + proys_real)]))
 
-            # ---- scope por meses + proyectos
+            if not proyectos_base:
+                st.warning("No hay proyectos para esos meses.")
+                return None
             ppt_scope = df_ppt_n[(df_ppt_n["Mes_A"].isin(meses_sel)) & (df_ppt_n["Proyecto_A"].isin(proyectos_base))].copy()
             real_scope = df_real_n[(df_real_n["Mes_A"].isin(meses_sel)) & (df_real_n["Proyecto_A"].isin(proyectos_base))].copy()
 
@@ -4048,12 +4049,8 @@ else:
                     st.write("Mes_A únicos PPT:", sorted(df_ppt_n["Mes_A"].unique().tolist())[:20])
                     st.write("Proyecto_A únicos PPT:", sorted(df_ppt_n["Proyecto_A"].unique().tolist())[:20])
                 return None
-
-            # ---- ingreso total PPT y REAL (TOTAL)
             ing_ppt_total = float(ppt_scope.loc[ppt_scope["Categoria_A"] == "INGRESO", "Neto_A"].sum() or 0.0)
             ing_real_total = float(real_scope.loc[real_scope["Categoria_A"] == "INGRESO", "Neto_A"].sum() or 0.0)
-
-            # ---- gastos PPT por CECO (G.ADMN y COSS)
             ppt_gastos = ppt_scope[ppt_scope["Clasificacion_A"].isin(["G.ADMN", "COSS"])].copy()
             if ppt_gastos.empty:
                 st.warning("No hay COSS/G.ADMN en PPT para el scope seleccionado.")
@@ -4069,8 +4066,6 @@ else:
             if "COSS" not in ppt_grp.columns:
                 ppt_grp["COSS"] = 0.0
             ppt_grp = ppt_grp.rename(columns={"G.ADMN": "GADM_PPT_CECO", "COSS": "COSS_PPT_CECO"})
-
-            # ---- gastos REAL por CECO (G.ADMN y COSS)
             real_gastos = real_scope[real_scope["Clasificacion_A"].isin(["G.ADMN", "COSS"])].copy()
             if real_gastos.empty:
                 real_grp = pd.DataFrame({"CeCo_A": [], "GADM_REAL": [], "COSS_REAL": []})
@@ -4085,20 +4080,14 @@ else:
                 if "COSS" not in real_grp.columns:
                     real_grp["COSS"] = 0.0
                 real_grp = real_grp.rename(columns={"G.ADMN": "GADM_REAL", "COSS": "COSS_REAL"})
-
-            # ---- merge por CECO
             cecos_all = sorted(set(ppt_grp["CeCo_A"].tolist()) | set(real_grp["CeCo_A"].tolist()))
             base = pd.DataFrame({"CeCo_A": cecos_all})
             base = base.merge(ppt_grp, on="CeCo_A", how="left").merge(real_grp, on="CeCo_A", how="left").fillna(0.0)
-
-            # ---- fórmula solicitada
             factor = (ing_real_total / ing_ppt_total) if abs(ing_ppt_total) > 1e-9 else 0.0
             base["GADM S/INGRESOS"] = base["GADM_PPT_CECO"] * factor
             base["COSS S/INGRESO"]  = base["COSS_PPT_CECO"] * factor
             base["DIF. GADM"] = base["GADM S/INGRESOS"] - base["GADM_REAL"]
             base["DIF COSS"]  = base["COSS S/INGRESO"] - base["COSS_REAL"]
-
-            # ✅ map CECO -> NOMBRE (mostrar nombre, no número)
             dfm = df_cecos.copy()
             dfm["ceco"] = dfm["ceco"].astype(str).str.strip()
             dfm["nombre"] = dfm["nombre"].astype(str).str.strip() if "nombre" in dfm.columns else dfm["ceco"]
@@ -4128,7 +4117,7 @@ else:
             }])
             out = pd.concat([out, total], ignore_index=True)
 
-            st.subheader("Real vs PPT — por CECO (filtro por proyecto)")
+            st.subheader("Presupuesto ajustado")
             st.dataframe(
                 out.style.format({
                     "GADM_REAL": "${:,.2f}",
@@ -4141,19 +4130,27 @@ else:
                 use_container_width=True,
                 height=520
             )
+            df_plot = out[out["CECO"] != "TOTAL"].copy()
+
+            if not df_plot.empty:
+                top_n = 20
+                df_plot["ABS_DIF"] = df_plot["DIF. GADM"].abs() + df_plot["DIF COSS"].abs()
+                df_plot = df_plot.sort_values("ABS_DIF", ascending=False).head(top_n)
+
+                st.subheader("Gráfico — COSS (Real vs S/Ingreso) por CECO")
+                st.bar_chart(df_plot.set_index("CECO")[["COSS_REAL", "COSS S/INGRESO"]])
+
+                st.subheader("Gráfico — G.ADMN (Real vs S/Ingreso) por CECO")
+                st.bar_chart(df_plot.set_index("CECO")[["GADM_REAL", "GADM S/INGRESOS"]])
 
             return out
-
-        # ✅ LLAMADA (sin filtro multi; usa tu filtro_pro)
         tabla_out = tabla_real_vs_ppt_por_ceco(
             df_ppt=df_ppt,
             df_real=df_real,
             meses_seleccionado=meses_seleccionado,
-            proyectos_filtrados=proyecto_codigo,  # <- lista de códigos del selectbox
-            df_cecos=df_cecos_local               # <- catálogo con nombres
+            proyectos_filtrados=proyecto_codigo,  
+            df_cecos=df_cecos_local               
         )
-
-
 
     elif selected == "Modificaciones":
         st.subheader("Cambios base de datos")
@@ -4577,6 +4574,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
