@@ -3864,9 +3864,6 @@ else:
                             n = max(len(proyectos_base), 1)
                             for p in proyectos_base:
                                 ing_manual_por_proyecto[p] = float(ing_manual_esgari or 0.0) / n
-
-                        st.caption("El total ESGARI se prorratea a proyectos por share de ingreso PPT del periodo (si no hay base, se reparte parejo).")
-
                     else:
                         # por cómo funciona tu filtro, aquí viene un solo proyecto
                         p = proyectos_base[0]
@@ -3924,11 +3921,6 @@ else:
 
                 base["GADM_PROY."] = base["share_gadm"] * gadm_proy_total
                 base["COSS_PROY."] = base["share_coss"] * coss_proy_total
-
-                st.info(
-                    f"Ingreso proyectado usado: ${ing_proy_total:,.0f}  |  "
-                    f"%G.ADMN: {pct_gadm*100:.2f}%  |  %COSS: {pct_coss*100:.2f}%"
-                )
 
                 t1 = _render_tabla(base, df_cecos)
                 return t1, {"pct_gadm": pct_gadm, "pct_coss": pct_coss, "ing_proy_total": ing_proy_total}
@@ -4737,6 +4729,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
