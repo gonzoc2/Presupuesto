@@ -114,12 +114,13 @@ def filtro_meses(col, df_ppt):
         mes = col.selectbox("Selecciona un mes", meses_disponibles)
         return [mes]
 
-    elif selected == "OH":
-        # 🔹 Multiselect mostrando TODOS los meses
+    elif selected == "Ingresos":
+        mes_corte = meses_disponibles[-1] if meses_disponibles else None
+
         return col.multiselect(
-            "Selecciona meses (YTD)",
+            "Selecciona meses (corte)",
             meses_disponibles,
-            default=meses_disponibles
+            default=[mes_corte] if mes_corte else []
         )
 
     else:
@@ -4737,6 +4738,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
