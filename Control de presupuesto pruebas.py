@@ -2944,10 +2944,10 @@ else:
                 "CECO": base["ceco"],
                 "GADM. REAL": base["REAL_GADM"],
                 "GADM. S/INGRESOS": base["GADM. S/INGRESOS"],
-                "DIF. GADM": base["GADM. S/INGRESOS"] - base["REAL_GADM"],
+                "DIF. GADM": base["REAL_GADM"] - base["GADM. S/INGRESOS"],
                 "COSS REAL": base["REAL_COSS"],
                 "COSS S/INGRESO": base["COSS S/INGRESO"],
-                "DIF. COSS": base["COSS S/INGRESO"] - base["REAL_COSS"],
+                "DIF. COSS": base["REAL_COSS"] - base["COSS S/INGRESO"],
             }).fillna(0.0)
 
             # --- TOTAL
@@ -4738,6 +4738,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
