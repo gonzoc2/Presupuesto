@@ -2922,64 +2922,6 @@ else:
                 ing_real_total = 0.0
 
             base = base.copy()
-
-            # --- Pesos CECO contra INGRESO PPT TOTAL
-            base["PESO_GADM_PPT"] = np.where(
-                abs(ing_ppt_total) > 1e-9,
-                base["PPT_GADM"] / ing_ppt_total,
-                0.0
-            )
-
-            base["PESO_COSS_PPT"] = np.where(
-                abs(ing_ppt_total) > 1e-9,
-                base["PPT_COSS"] / ing_ppt_total,
-                0.0
-            )
-
-            # --- Aplica al INGRESO REAL TOTAL
-            base["GADM. S/INGRESOS"] = base["PESO_GADM_PPT"] * ing_real_total
-            base["COSS S/INGRESO"]   = base["PESO_COSS_PPT"] * ing_real_total
-
-            tabla_s_ing = pd.DataFrame({
-                "CECO": base["ceco"],
-                "GADM. REAL": base["REAL_GADM"],
-                "GADM. S/INGRESOS": base["GADM. S/INGRESOS"],
-                "DIF. GADM": base["REAL_GADM"] - base["GADM. S/INGRESOS"],
-                "COSS REAL": base["REAL_COSS"],
-                "COSS S/INGRESO": base["COSS S/INGRESO"],
-                "DIF. COSS": base["REAL_COSS"] - base["COSS S/INGRESO"],
-            }).fillna(0.0)
-
-            # --- TOTAL
-            total_row = pd.DataFrame([{
-                "CECO": "TOTAL",
-                "GADM. REAL": float(tabla_s_ing["GADM. REAL"].sum()),
-                "GADM. S/INGRESOS": float(tabla_s_ing["GADM. S/INGRESOS"].sum()),
-                "DIF. GADM": float(tabla_s_ing["DIF. GADM"].sum()),
-                "COSS REAL": float(tabla_s_ing["COSS REAL"].sum()),
-                "COSS S/INGRESO": float(tabla_s_ing["COSS S/INGRESO"].sum()),
-                "DIF. COSS": float(tabla_s_ing["DIF. COSS"].sum()),
-            }])
-
-            tabla_s_ing = pd.concat([tabla_s_ing, total_row], ignore_index=True)
-
-            st.subheader("Departamentos")
-            st.dataframe(
-                tabla_s_ing.style
-                    .apply(_bold_total, axis=1)
-                    .format({
-                        "GADM. REAL": "${:,.2f}",
-                        "GADM. S/INGRESOS": "${:,.2f}",
-                        "DIF. GADM": "${:,.2f}",
-                        "COSS REAL": "${:,.2f}",
-                        "COSS S/INGRESO": "${:,.2f}",
-                        "DIF. COSS": "${:,.2f}",
-                    }),
-                use_container_width=True,
-                height=420
-            )
-
-
             tabla_graf = tabla_nominal[tabla_nominal["ceco"] != "TOTAL"].copy()
 
             if not tabla_graf.empty:
@@ -4738,6 +4680,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
