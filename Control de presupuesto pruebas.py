@@ -3396,10 +3396,12 @@ else:
 
         col1, col2 = st.columns(2)
         meses_seleccionado = filtro_meses(col1, df_ppt)
-        proyecto_codigo, proyecto_nombre = filtro_pro(col2) 
+        proyecto_codigo, proyecto_nombre = filtro_pro(col2)
+
         df_cecos_local = cargar_datos(cecos_url)
         df_cecos_local["ceco"] = df_cecos_local["ceco"].astype(str).str.strip()
         df_cecos_local["nombre"] = df_cecos_local["nombre"].astype(str).str.strip()
+
         def tabla_real_vs_ppt_por_ceco(df_ppt, df_real, meses_seleccionado, proyectos_filtrados, df_cecos):
             MESES_ORDENADOS = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
             orden = {m: i for i, m in enumerate(MESES_ORDENADOS)}
@@ -3451,6 +3453,7 @@ else:
 
             df_ppt_n = _norm_df(df_ppt)
             df_real_n = _norm_df(df_real)
+
             proyectos_base = [norm_proy(p) for p in (proyectos_filtrados or []) if str(p).strip()]
 
             if not proyectos_base:
@@ -3461,8 +3464,16 @@ else:
             if not proyectos_base:
                 st.warning("No hay proyectos para esos meses.")
                 return None
-            ppt_scope = df_ppt_n[(df_ppt_n["Mes_A"].isin(meses_sel)) & (df_ppt_n["Proyecto_A"].isin(proyectos_base))].copy()
-            real_scope = df_real_n[(df_real_n["Mes_A"].isin(meses_sel)) & (df_real_n["Proyecto_A"].isin(proyectos_base))].copy()
+
+            ppt_scope = df_ppt_n[
+                (df_ppt_n["Mes_A"].isin(meses_sel)) &
+                (df_ppt_n["Proyecto_A"].isin(proyectos_base))
+            ].copy()
+
+            real_scope = df_real_n[
+                (df_real_n["Mes_A"].isin(meses_sel)) &
+                (df_real_n["Proyecto_A"].isin(proyectos_base))
+            ].copy()
 
             if ppt_scope.empty and real_scope.empty:
                 st.warning("Sin datos para esos meses/proyectos.")
@@ -3472,13 +3483,16 @@ else:
                     st.write("Mes_A únicos PPT:", sorted(df_ppt_n["Mes_A"].unique().tolist())[:20])
                     st.write("Proyecto_A únicos PPT:", sorted(df_ppt_n["Proyecto_A"].unique().tolist())[:20])
                 return None
+
             ing_ppt_total = float(ppt_scope.loc[ppt_scope["Categoria_A"] == "INGRESO", "Neto_A"].sum() or 0.0)
             ing_real_total = float(real_scope.loc[real_scope["Categoria_A"] == "INGRESO", "Neto_A"].sum() or 0.0)
+
             ppt_gastos = ppt_scope[ppt_scope["Clasificacion_A"].isin(["G.ADMN", "COSS"])].copy()
             if ppt_gastos.empty:
                 st.warning("No hay COSS/G.ADMN en PPT para el scope seleccionado.")
                 return None
 
+            # --- PPT por CECO (GADM y COSS)
             ppt_grp = (
                 ppt_gastos.groupby(["CeCo_A", "Clasificacion_A"], as_index=False)["Neto_A"].sum()
                 .pivot(index="CeCo_A", columns="Clasificacion_A", values="Neto_A")
@@ -3488,7 +3502,13 @@ else:
                 ppt_grp["G.ADMN"] = 0.0
             if "COSS" not in ppt_grp.columns:
                 ppt_grp["COSS"] = 0.0
-            ppt_grp = ppt_grp.rename(columns={"G.ADMN": "GADM_PPT_CECO", "COSS": "COSS_PPT_CECO"})
+
+            ppt_grp = ppt_grp.rename(columns={
+                "G.ADMN": "GADM_PPT_CECO",
+                "COSS": "COSS_PPT_CECO"
+            })
+
+            # --- REAL por CECO (GADM y COSS)
             real_gastos = real_scope[real_scope["Clasificacion_A"].isin(["G.ADMN", "COSS"])].copy()
             if real_gastos.empty:
                 real_grp = pd.DataFrame({"CeCo_A": [], "GADM_REAL": [], "COSS_REAL": []})
@@ -3503,65 +3523,99 @@ else:
                 if "COSS" not in real_grp.columns:
                     real_grp["COSS"] = 0.0
                 real_grp = real_grp.rename(columns={"G.ADMN": "GADM_REAL", "COSS": "COSS_REAL"})
+
+            # --- base
             cecos_all = sorted(set(ppt_grp["CeCo_A"].tolist()) | set(real_grp["CeCo_A"].tolist()))
             base = pd.DataFrame({"CeCo_A": cecos_all})
             base = base.merge(ppt_grp, on="CeCo_A", how="left").merge(real_grp, on="CeCo_A", how="left").fillna(0.0)
+
+            # --- Ajuste s/ingresos
             factor = (ing_real_total / ing_ppt_total) if abs(ing_ppt_total) > 1e-9 else 0.0
             base["GADM S/INGRESOS"] = base["GADM_PPT_CECO"] * factor
             base["COSS S/INGRESO"]  = base["COSS_PPT_CECO"] * factor
+
+            # --- DIFs
             base["DIF. GADM"] = base["GADM_REAL"] - base["GADM S/INGRESOS"]
             base["DIF COSS"]  = base["COSS_REAL"] - base["COSS S/INGRESO"]
+
+            # --- mapa ceco -> nombre
             dfm = df_cecos.copy()
             dfm["ceco"] = dfm["ceco"].astype(str).str.strip()
             dfm["nombre"] = dfm["nombre"].astype(str).str.strip() if "nombre" in dfm.columns else dfm["ceco"]
             mapa_ceco = dfm[["ceco", "nombre"]].drop_duplicates()
 
-            base = base.merge(mapa_ceco.rename(columns={"ceco": "CeCo_A", "nombre": "CECO"}), on="CeCo_A", how="left")
+            base = base.merge(
+                mapa_ceco.rename(columns={"ceco": "CeCo_A", "nombre": "CECO"}),
+                on="CeCo_A",
+                how="left"
+            )
             base["CECO"] = base["CECO"].fillna(base["CeCo_A"])
 
+            # --- OUTPUT (AGREGA GADM PPT y COSS PPT)
             out = base[[
                 "CECO",
-                "GADM_REAL",
+
+                "GADM_PPT_CECO",
                 "GADM S/INGRESOS",
+                "GADM_REAL",
                 "DIF. GADM",
-                "COSS_REAL",
+
+                "COSS_PPT_CECO",
                 "COSS S/INGRESO",
-                "DIF COSS"
+                "COSS_REAL",
+                "DIF COSS",
             ]].copy()
 
+            out = out.rename(columns={
+                "GADM_PPT_CECO": "GADM PPT",
+                "COSS_PPT_CECO": "COSS PPT",
+            })
+
+            # --- total
             total = pd.DataFrame([{
                 "CECO": "TOTAL",
-                "GADM_REAL": float(out["GADM_REAL"].sum()),
+
+                "GADM PPT": float(out["GADM PPT"].sum()),
                 "GADM S/INGRESOS": float(out["GADM S/INGRESOS"].sum()),
+                "GADM_REAL": float(out["GADM_REAL"].sum()),
                 "DIF. GADM": float(out["DIF. GADM"].sum()),
-                "COSS_REAL": float(out["COSS_REAL"].sum()),
+
+                "COSS PPT": float(out["COSS PPT"].sum()),
                 "COSS S/INGRESO": float(out["COSS S/INGRESO"].sum()),
+                "COSS_REAL": float(out["COSS_REAL"].sum()),
                 "DIF COSS": float(out["DIF COSS"].sum()),
             }])
+
             out = pd.concat([out, total], ignore_index=True)
+
             # --- estilo condicional (rojo si DIF > 100)
-            def _pinta_rojo_difs(df):
+            def _pinta_difs_color(df):
                 df = df.copy()
 
-                def _fmt(v):
-                    return "${:,.2f}".format(v)
-
-                def _style_cell(v, threshold=100):
+                def _style_cell(v, thr=100):
                     try:
-                        return "background-color:#ff4d4d; color:white; font-weight:700;" if float(v) > threshold else ""
+                        v = float(v)
+                        if v > thr:
+                            return "background-color:#ff4d4d; color:white; font-weight:700;"  # rojo
+                        if v < 0:
+                            return "background-color:#2ecc71; color:white; font-weight:700;"  # verde
+                        return ""
                     except:
                         return ""
 
                 sty = df.style.format({
-                    "GADM_REAL": "${:,.2f}",
+                    "GADM PPT": "${:,.2f}",
                     "GADM S/INGRESOS": "${:,.2f}",
+                    "GADM_REAL": "${:,.2f}",
                     "DIF. GADM": "${:,.2f}",
-                    "COSS_REAL": "${:,.2f}",
+
+                    "COSS PPT": "${:,.2f}",
                     "COSS S/INGRESO": "${:,.2f}",
+                    "COSS_REAL": "${:,.2f}",
                     "DIF COSS": "${:,.2f}",
                 })
 
-                # pinta solo las columnas DIF
+                # aplica color SOLO a DIFs
                 sty = sty.applymap(lambda v: _style_cell(v, 100), subset=["DIF. GADM"])
                 sty = sty.applymap(lambda v: _style_cell(v, 100), subset=["DIF COSS"])
 
@@ -3569,10 +3623,11 @@ else:
 
             st.subheader("Presupuesto ajustado")
             st.dataframe(
-                _pinta_rojo_difs(out),
+                _pinta_difs_color(out),
                 use_container_width=True,
                 height=520
             )
+
 
             df_plot = out[out["CECO"] != "TOTAL"].copy()
 
@@ -3588,12 +3643,13 @@ else:
                 st.bar_chart(df_plot.set_index("CECO")[["GADM_REAL", "GADM S/INGRESOS"]])
 
             return out
+
         tabla_out = tabla_real_vs_ppt_por_ceco(
             df_ppt=df_ppt,
             df_real=df_real,
             meses_seleccionado=meses_seleccionado,
-            proyectos_filtrados=proyecto_codigo,  
-            df_cecos=df_cecos_local               
+            proyectos_filtrados=proyecto_codigo,
+            df_cecos=df_cecos_local
         )
 
 
@@ -4793,6 +4849,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
