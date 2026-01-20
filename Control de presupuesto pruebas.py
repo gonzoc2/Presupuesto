@@ -1233,7 +1233,7 @@ else:
             "calendar-month",     # Meses PPT
             "arrow-left-right",
             "graph-up-arrow",  
-            "pie-chart",
+            "sliders",
             "bar-chart-line",
             "calendar-month",
             "tools",
@@ -1246,7 +1246,7 @@ else:
         selected = option_menu(
         menu_title=None,
         options=["Tablero", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Proyección","Proyección OH","YTD","Mensual", "Modificaciones", "Dashboard"],
-        icons=["clipboard-data", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "graph-up-arrow", "pie-chart", "bar-chart-line", "calendar-month", "tools", "speedometer2"],
+        icons=["clipboard-data", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "graph-up-arrow", "sliders", "bar-chart-line", "calendar-month", "tools", "speedometer2"],
         default_index=0,
         orientation="horizontal",)
 
@@ -4916,6 +4916,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
