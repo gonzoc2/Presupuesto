@@ -1233,7 +1233,7 @@ else:
             "calendar-month",     # Meses PPT
             "arrow-left-right",
             "graph-up-arrow",  
-            "sliders",
+            "pie-chart",
             "bar-chart-line",
             "calendar-month",
             "tools",
@@ -1246,7 +1246,7 @@ else:
         selected = option_menu(
         menu_title=None,
         options=["Tablero", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Proyección","Proyección OH","YTD","Mensual", "Modificaciones", "Dashboard"],
-        icons=["clipboard-data", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "graph-up-arrow", "sliders", "bar-chart-line", "calendar-month", "tools", "speedometer2"],
+        icons=["clipboard-data", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "graph-up-arrow", "pie-chart", "bar-chart-line", "calendar-month", "tools", "speedometer2"],
         default_index=0,
         orientation="horizontal",)
 
@@ -3913,21 +3913,52 @@ else:
             return df.style.format(fmt)
 
         def _plot_oh_por_ceco(df_plot, titulo):
+            def mxn_txt(v):
+                try:
+                    return f"${float(v):,.0f}"
+                except:
+                    return "$0"
+
             fig = go.Figure()
-            fig.add_bar(x=df_plot["CECO"], y=df_plot["OH_PPT"], name="OH PPT")
-            fig.add_bar(x=df_plot["CECO"], y=df_plot["OH_PROY"], name="OH PROY")
-            fig.add_bar(x=df_plot["CECO"], y=df_plot["OH_REAL"], name="OH REAL")
+
+            fig.add_bar(
+                x=df_plot["CECO"],
+                y=df_plot["OH_PPT"],
+                name="OH PPT",
+                text=[mxn_txt(v) for v in df_plot["OH_PPT"]],
+                textposition="outside"
+            )
+            fig.add_bar(
+                x=df_plot["CECO"],
+                y=df_plot["OH_PROY"],
+                name="OH PROY",
+                text=[mxn_txt(v) for v in df_plot["OH_PROY"]],
+                textposition="outside"
+            )
+            fig.add_bar(
+                x=df_plot["CECO"],
+                y=df_plot["OH_REAL"],
+                name="OH REAL",
+                text=[mxn_txt(v) for v in df_plot["OH_REAL"]],
+                textposition="outside"
+            )
 
             fig.update_layout(
                 barmode="group",
                 title=titulo,
                 xaxis_title="CECO",
                 yaxis_title="Monto ($)",
-                height=450,
+                height=520,  # un poco más alto para que quepan las etiquetas
                 legend_title="Tipo",
                 margin=dict(l=20, r=20, t=60, b=20),
+                uniformtext_minsize=9,
+                uniformtext_mode="hide",
             )
+            fig.update_traces(hovertemplate="$%{y:,.0f}<extra></extra>")
+            fig.update_yaxes(tickprefix="$", tickformat=",.0f")
+            fig.update_layout(yaxis=dict(automargin=True))
             st.plotly_chart(fig, use_container_width=True)
+
         c1, c2 = st.columns([2, 3])
         meses_seleccionado = filtro_meses(c1, df_ppt)
         cecos_sel, ceco_nombre = filtro_ceco(c2)
@@ -4885,6 +4916,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
