@@ -47,7 +47,7 @@ def ct(texto):
 
 
 base_ppt = st.secrets["urls"]["presupuesto"]
-Usuarios_url = st.secrets["urls"]["usuarios"]
+usuarios_url = st.secrets["urls"]["usuarios"]
 basereal = st.secrets["urls"]["base_2025"]
 mapeo_ppt_url = st.secrets["urls"]["mapeo"]
 proyectos_url = st.secrets["urls"]["proyectos"]
@@ -1142,7 +1142,7 @@ def tabla_proyectos(df_ppt, df_real, meses_seleccionado, df_proyectos):
 
 init_session_state()
 # App principal
-df_usuarios = cargar_datos(Usuarios_url)
+df_usuarios = cargar_datos(usuarios_url)
 
 if not st.session_state["logged_in"]:
 
@@ -4916,6 +4916,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
