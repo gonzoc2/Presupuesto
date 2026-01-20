@@ -2583,22 +2583,34 @@ else:
                 if row.get("ceco") == "TOTAL":
                     return ["background-color:#FFFFFF;color:black;font-weight:bold"] * len(row)
                 return [""] * len(row)
+            
+            def _rojo_dif_nominal(df, thr=100):
+                def _style(v):
+                    try:
+                        return "background-color:#ff4d4d; color:white; font-weight:800;" if float(v) > thr else ""
+                    except:
+                        return ""
+                return (df.style
+                        .apply(_bold_total, axis=1)
+                        .applymap(lambda v: _style(v), subset=["DIF GADM"])
+                        .applymap(lambda v: _style(v), subset=["DIF COSS"])
+                        .format({
+                            "GADM. REAL": "${:,.2f}",
+                            "GADM. PPT":  "${:,.2f}",
+                            "DIF GADM":   "${:,.2f}",
+                            "COSS REAL":  "${:,.2f}",
+                            "COSS PPT":   "${:,.2f}",
+                            "DIF COSS":   "${:,.2f}",
+                        })
+                )
 
             st.subheader("Departamentos — Nominal (MXN)")
             st.dataframe(
-                tabla_nominal.style
-                    .apply(_bold_total, axis=1)
-                    .format({
-                        "GADM. REAL": "${:,.2f}",
-                        "GADM. PPT":  "${:,.2f}",
-                        "DIF GADM":   "${:,.2f}",
-                        "COSS REAL":  "${:,.2f}",
-                        "COSS PPT":   "${:,.2f}",
-                        "DIF COSS":   "${:,.2f}",
-                    }),
+                _rojo_dif_nominal(tabla_nominal, thr=100),
                 use_container_width=True,
                 height=420
             )
+
 
             st.subheader("Departamentos — % sobre Ingresos")
 
@@ -2754,7 +2766,6 @@ else:
             proyectos_seleccionados=proyecto_codigo,
             df_cecos=df_cecos
         )
-
     elif selected == "Proyección":
         MESES_ORDENADOS = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
         orden = {m: i for i, m in enumerate(MESES_ORDENADOS)}
@@ -3197,6 +3208,7 @@ else:
                 if s in ["INGRESOS", "ING", "VENTAS", "REVENUE"]:
                     return "INGRESO"
                 return s
+
             if isinstance(meses_seleccionado, str):
                 meses_sel = [norm_mes(meses_seleccionado)]
             else:
@@ -3215,6 +3227,7 @@ else:
 
             df_ppt = _norm_df(df_ppt)
             df_real = _norm_df(df_real)
+
             if df_proyectos is None or df_proyectos.empty:
                 st.warning("df_proyectos está vacío / None. No puedo armar la tabla YTD.")
                 return pd.DataFrame()
@@ -3223,6 +3236,7 @@ else:
             df_map["proyectos"] = df_map["proyectos"].apply(norm_proy)
             df_map["nombre"] = df_map["nombre"].astype(str).str.strip()
             mapa = dict(zip(df_map["proyectos"], df_map["nombre"]))
+
             proyectos_visibles = df_map["proyectos"].dropna().astype(str).tolist()
             if proyectos_filtrados:
                 sel_set = set([norm_proy(x) for x in proyectos_filtrados])
@@ -3262,6 +3276,7 @@ else:
                 gadm_ppt  = float(gadm_ppt or 0.0)
                 gadm_real = float(gadm_real or 0.0)
 
+                # % del PPT aplicado a ingreso real
                 coss_pct = (coss_total_ppt / ing_ppt) if abs(ing_ppt) > 1e-9 else 0.0
                 gadm_pct = (gadm_ppt / ing_ppt) if abs(ing_ppt) > 1e-9 else 0.0
 
@@ -3270,9 +3285,15 @@ else:
 
                 rows.append({
                     "PROYECTO": nombre,
+
+                    # --- COSS
+                    "COSS PPT": coss_total_ppt,
                     "COSS S/INGRESO": coss_calc,
                     "COSS REAL": coss_total_real,
                     "DIF. COSS": coss_total_real - coss_calc,
+
+                    # --- G.ADMN
+                    "G.ADMN PPT": gadm_ppt,
                     "G.ADM S/INGRESO": gadm_calc,
                     "G.ADM REAL": gadm_real,
                     "DIF. G.ADM": gadm_real - gadm_calc,
@@ -3284,12 +3305,21 @@ else:
                 st.warning("Sin filas para YTD (revisa filtros / catálogo proyectos).")
                 return tabla
 
+            # --- orden explícito de columnas (PPT -> S/INGRESO -> REAL -> DIF)
+            tabla = tabla[[
+                "PROYECTO",
+                "COSS PPT", "COSS S/INGRESO", "COSS REAL", "DIF. COSS",
+                "G.ADMN PPT", "G.ADM S/INGRESO", "G.ADM REAL", "DIF. G.ADM",
+            ]]
+
             # --- total
             total = pd.DataFrame([{
                 "PROYECTO": "TOTAL",
+                "COSS PPT": float(tabla["COSS PPT"].sum()),
                 "COSS S/INGRESO": float(tabla["COSS S/INGRESO"].sum()),
                 "COSS REAL": float(tabla["COSS REAL"].sum()),
                 "DIF. COSS": float(tabla["DIF. COSS"].sum()),
+                "G.ADMN PPT": float(tabla["G.ADMN PPT"].sum()),
                 "G.ADM S/INGRESO": float(tabla["G.ADM S/INGRESO"].sum()),
                 "G.ADM REAL": float(tabla["G.ADM REAL"].sum()),
                 "DIF. G.ADM": float(tabla["DIF. G.ADM"].sum()),
@@ -3297,8 +3327,10 @@ else:
 
             tabla_out = pd.concat([tabla, total], ignore_index=True)
 
-            # --- formato tabla
-            cols_money = ["COSS S/INGRESO","COSS REAL","DIF. COSS","G.ADM S/INGRESO","G.ADM REAL","DIF. G.ADM"]
+            cols_money = [
+                "COSS PPT", "COSS S/INGRESO", "COSS REAL", "DIF. COSS",
+                "G.ADMN PPT", "G.ADM S/INGRESO", "G.ADM REAL", "DIF. G.ADM",
+            ]
 
             def _fmt_currency(x):
                 try:
@@ -3307,20 +3339,28 @@ else:
                     return "$0"
 
             def _highlight_total(row):
-                if str(row.get("PROYECTO","")) == "TOTAL":
+                if str(row.get("PROYECTO", "")) == "TOTAL":
                     return ["font-weight:700; background-color:#f2f2f2;" for _ in row]
                 return ["" for _ in row]
+
+            def _red_if_gt_100(v):
+                try:
+                    return "background-color:#ff4d4d; color:white; font-weight:800;" if float(v) > 100 else ""
+                except:
+                    return ""
+
             st.dataframe(
                 tabla_out.style
                     .format({c: _fmt_currency for c in cols_money})
-                    .apply(_highlight_total, axis=1),
+                    .apply(_highlight_total, axis=1)
+                    .applymap(_red_if_gt_100, subset=["DIF. COSS"])
+                    .applymap(_red_if_gt_100, subset=["DIF. G.ADM"]),
                 use_container_width=True,
                 height=420,
                 hide_index=True
             )
 
             st.subheader("Gráfico — COSS")
-
             df_plot = tabla_out[tabla_out["PROYECTO"] != "TOTAL"].copy()
             if not df_plot.empty:
                 df_plot["ABS_DIF"] = df_plot["DIF. COSS"].abs() + df_plot["DIF. G.ADM"].abs()
@@ -3330,12 +3370,12 @@ else:
                 st.bar_chart(chart_coss)
 
             st.subheader("Gráfico — G.ADMN")
-
             if not df_plot.empty:
                 chart_gadm = df_plot.set_index("PROYECTO")[["G.ADM S/INGRESO", "G.ADM REAL"]]
                 st.bar_chart(chart_gadm)
 
             return tabla_out
+
         c1, c2 = st.columns([2, 3])
         meses_seleccionado = filtro_meses(c1, df_ppt)
         proyecto_codigo, proyecto_nombre = filtro_pro(c2)
@@ -3346,7 +3386,7 @@ else:
                 df_ppt=df_ppt,
                 df_real=df_real,
                 meses_seleccionado=meses_seleccionado,
-                df_proyectos=proyectos,              
+                df_proyectos=proyectos,
                 proyectos_filtrados=proyectos_filtrados
             )
         else:
@@ -3499,20 +3539,41 @@ else:
                 "DIF COSS": float(out["DIF COSS"].sum()),
             }])
             out = pd.concat([out, total], ignore_index=True)
+            # --- estilo condicional (rojo si DIF > 100)
+            def _pinta_rojo_difs(df):
+                df = df.copy()
 
-            st.subheader("Presupuesto ajustado")
-            st.dataframe(
-                out.style.format({
+                def _fmt(v):
+                    return "${:,.2f}".format(v)
+
+                def _style_cell(v, threshold=100):
+                    try:
+                        return "background-color:#ff4d4d; color:white; font-weight:700;" if float(v) > threshold else ""
+                    except:
+                        return ""
+
+                sty = df.style.format({
                     "GADM_REAL": "${:,.2f}",
                     "GADM S/INGRESOS": "${:,.2f}",
                     "DIF. GADM": "${:,.2f}",
                     "COSS_REAL": "${:,.2f}",
                     "COSS S/INGRESO": "${:,.2f}",
                     "DIF COSS": "${:,.2f}",
-                }),
+                })
+
+                # pinta solo las columnas DIF
+                sty = sty.applymap(lambda v: _style_cell(v, 100), subset=["DIF. GADM"])
+                sty = sty.applymap(lambda v: _style_cell(v, 100), subset=["DIF COSS"])
+
+                return sty
+
+            st.subheader("Presupuesto ajustado")
+            st.dataframe(
+                _pinta_rojo_difs(out),
                 use_container_width=True,
                 height=520
             )
+
             df_plot = out[out["CECO"] != "TOTAL"].copy()
 
             if not df_plot.empty:
@@ -3534,6 +3595,7 @@ else:
             proyectos_filtrados=proyecto_codigo,  
             df_cecos=df_cecos_local               
         )
+
 
     elif selected == "OH":
 
@@ -4035,13 +4097,6 @@ else:
                 return "COSS"
             return s
 
-        def _mxn_style_df(df):
-            fmt = {}
-            for c in df.columns:
-                if c != "CECO":
-                    fmt[c] = "${:,.0f}"
-            return df.style.format(fmt)
-
         def _plot_oh_por_ceco(df_plot, titulo):
             def mxn_txt(v):
                 try:
@@ -4050,7 +4105,6 @@ else:
                     return "$0"
 
             fig = go.Figure()
-
             fig.add_bar(
                 x=df_plot["CECO"],
                 y=df_plot["OH_PPT"],
@@ -4078,7 +4132,7 @@ else:
                 title=titulo,
                 xaxis_title="CECO",
                 yaxis_title="Monto ($)",
-                height=520,  # un poco más alto para que quepan las etiquetas
+                height=520,
                 legend_title="Tipo",
                 margin=dict(l=20, r=20, t=60, b=20),
                 uniformtext_minsize=9,
@@ -4088,6 +4142,24 @@ else:
             fig.update_yaxes(tickprefix="$", tickformat=",.0f")
             fig.update_layout(yaxis=dict(automargin=True))
             st.plotly_chart(fig, use_container_width=True)
+
+        def _style_df_oh(df, thr=100):
+            # Formato MXN para todo menos CECO
+            fmt = {c: "${:,.0f}" for c in df.columns if c != "CECO"}
+
+            def _rojo(v):
+                try:
+                    return "background-color:#ff4d4d; color:white; font-weight:800;" if float(v) > thr else ""
+                except:
+                    return ""
+
+            sty = df.style.format(fmt)
+
+            # Pinta SOLO DIF_S/INGRESOS si existe
+            if "DIF_S/INGRESOS" in df.columns:
+                sty = sty.applymap(_rojo, subset=["DIF_S/INGRESOS"])
+
+            return sty
 
         c1, c2 = st.columns([2, 3])
         meses_seleccionado = filtro_meses(c1, df_ppt)
@@ -4104,13 +4176,13 @@ else:
         )
 
         with tab_actual:
-
             # ---------- OH PPT
             df_ppt_oh = df_ppt.copy()
             df_ppt_oh["Mes_A"] = df_ppt_oh["Mes_A"].apply(norm_mes)
             df_ppt_oh["Clasificacion_A"] = df_ppt_oh["Clasificacion_A"].apply(_norm_clas)
             df_ppt_oh["CeCo_A"] = df_ppt_oh["CeCo_A"].astype(str).str.strip()
             df_ppt_oh["Proyecto_A"] = df_ppt_oh["Proyecto_A"].astype(str).str.strip()
+            df_ppt_oh["Neto_A"] = pd.to_numeric(df_ppt_oh["Neto_A"], errors="coerce").fillna(0.0)
 
             df_ppt_oh = df_ppt_oh[
                 (df_ppt_oh["Mes_A"].isin(meses_sel)) &
@@ -4128,18 +4200,20 @@ else:
             )
 
             oh_ppt_total = float(ppt_ceco["OH_PPT"].sum() or 0.0)
+
+            # ---------- OH REAL
             df_real_oh = df_real.copy()
             df_real_oh["Mes_A"] = df_real_oh["Mes_A"].apply(norm_mes)
             df_real_oh["Clasificacion_A"] = df_real_oh["Clasificacion_A"].apply(_norm_clas)
             df_real_oh["CeCo_A"] = df_real_oh["CeCo_A"].astype(str).str.strip()
             df_real_oh["Proyecto_A"] = df_real_oh["Proyecto_A"].astype(str).str.strip()
+            df_real_oh["Neto_A"] = pd.to_numeric(df_real_oh["Neto_A"], errors="coerce").fillna(0.0)
 
             df_real_oh = df_real_oh[
                 (df_real_oh["Mes_A"].isin(meses_sel)) &
                 (df_real_oh["Proyecto_A"].isin(OH_PROYECTOS)) &
                 (df_real_oh["Clasificacion_A"].isin(CLAS_OH))
             ]
-
             if cecos_sel:
                 df_real_oh = df_real_oh[df_real_oh["CeCo_A"].isin(cecos_sel)]
 
@@ -4151,31 +4225,56 @@ else:
             )
             df_ing_ppt = df_ppt.copy()
             df_ing_ppt["Mes_A"] = df_ing_ppt["Mes_A"].apply(norm_mes)
+            df_ing_ppt["Neto_A"] = pd.to_numeric(df_ing_ppt["Neto_A"], errors="coerce").fillna(0.0)
 
-            df_ing_ppt = df_ing_ppt[
-                (df_ing_ppt["Mes_A"].isin(meses_sel)) &
-                (df_ing_ppt["Categoria_A"] == "INGRESO")
-            ]
+            if "Categoria_A" in df_ing_ppt.columns:
+                df_ing_ppt["Categoria_A"] = df_ing_ppt["Categoria_A"].astype(str).str.strip().str.upper()
+                df_ing_ppt = df_ing_ppt[
+                    (df_ing_ppt["Mes_A"].isin(meses_sel)) &
+                    (df_ing_ppt["Categoria_A"] == "INGRESO")
+                ]
+                ing_ppt_total = float(df_ing_ppt["Neto_A"].sum() or 0.0)
+            else:
+                ing_ppt_total = 0.0
 
-            ing_ppt_total = float(df_ing_ppt["Neto_A"].sum() or 0.0)
-            pct_oh = oh_ppt_total / ing_ppt_total if ing_ppt_total else 0.0
+            pct_oh = (oh_ppt_total / ing_ppt_total) if ing_ppt_total else 0.0
+            df_ing_real = df_real.copy()
+            df_ing_real["Mes_A"] = df_ing_real["Mes_A"].apply(norm_mes)
+            df_ing_real["Neto_A"] = pd.to_numeric(df_ing_real["Neto_A"], errors="coerce").fillna(0.0)
+
+            if "Categoria_A" in df_ing_real.columns:
+                df_ing_real["Categoria_A"] = df_ing_real["Categoria_A"].astype(str).str.strip().str.upper()
+                df_ing_real = df_ing_real[
+                    (df_ing_real["Mes_A"].isin(meses_sel)) &
+                    (df_ing_real["Categoria_A"] == "INGRESO")
+                ]
+                ing_real_total = float(df_ing_real["Neto_A"].sum() or 0.0)
+            else:
+                ing_real_total = 0.0
+
+            oh_s_ing_total = pct_oh * ing_real_total
             df_ing_proy = st.session_state.get("PROY_df_proyeccion", pd.DataFrame())
-            ingreso_proy_total = float(df_ing_proy["Neto_A"].sum() or 0.0)
-
+            ingreso_proy_total = float(pd.to_numeric(df_ing_proy.get("Neto_A", 0.0), errors="coerce").sum() or 0.0)
             oh_proy_total = pct_oh * ingreso_proy_total
+
+            # ---------- BASE por CECO
             base = pd.DataFrame({
                 "CeCo_A": sorted(set(ppt_ceco["CeCo_A"]).union(real_ceco["CeCo_A"]))
             })
 
-            base = base.merge(ppt_ceco, on="CeCo_A", how="left")
-            base = base.merge(real_ceco, on="CeCo_A", how="left")
-
+            base = base.merge(ppt_ceco, on="CeCo_A", how="left").merge(real_ceco, on="CeCo_A", how="left")
             base["OH_PPT"] = base["OH_PPT"].fillna(0.0)
             base["OH_REAL"] = base["OH_REAL"].fillna(0.0)
-            base["share_ppt"] = base["OH_PPT"] / oh_ppt_total if oh_ppt_total else 0.0
+
+            base["share_ppt"] = (base["OH_PPT"] / oh_ppt_total) if oh_ppt_total else 0.0
             base["OH_PROY"] = base["share_ppt"] * oh_proy_total
+            base["OH_S/INGRESOS"] = base["share_ppt"] * oh_s_ing_total
+            base["DIF_S/INGRESOS"] = base["OH_REAL"] - base["OH_S/INGRESOS"]
+
+            # existentes
             base["DIF_PROYECTADO"] = base["OH_PROY"] - base["OH_PPT"]
             base["DIF_REAL"] = base["OH_REAL"] - base["OH_PPT"]
+
             df_cecos_cat = cargar_datos(cecos_url)
             df_cecos_cat["ceco"] = df_cecos_cat["ceco"].astype(str).str.strip()
             df_cecos_cat["nombre"] = df_cecos_cat["nombre"].astype(str).str.strip()
@@ -4186,69 +4285,92 @@ else:
                 how="left"
             )
             base["CECO"] = base["CECO"].fillna(base["CeCo_A"])
+
+            # ---------- TABLA
             t = base[[
                 "CECO",
                 "OH_PPT",
                 "OH_PROY",
                 "OH_REAL",
+                "OH_S/INGRESOS",
+                "DIF_S/INGRESOS",
                 "DIF_PROYECTADO",
                 "DIF_REAL"
             ]].copy()
 
             total = pd.DataFrame([{
                 "CECO": "TOTAL",
-                "OH_PPT": t["OH_PPT"].sum(),
-                "OH_PROY": t["OH_PROY"].sum(),
-                "OH_REAL": t["OH_REAL"].sum(),
-                "DIF_PROYECTADO": t["DIF_PROYECTADO"].sum(),
-                "DIF_REAL": t["DIF_REAL"].sum()
+                "OH_PPT": float(t["OH_PPT"].sum() or 0.0),
+                "OH_PROY": float(t["OH_PROY"].sum() or 0.0),
+                "OH_REAL": float(t["OH_REAL"].sum() or 0.0),
+                "OH_S/INGRESOS": float(t["OH_S/INGRESOS"].sum() or 0.0),
+                "DIF_S/INGRESOS": float(t["DIF_S/INGRESOS"].sum() or 0.0),
+                "DIF_PROYECTADO": float(t["DIF_PROYECTADO"].sum() or 0.0),
+                "DIF_REAL": float(t["DIF_REAL"].sum() or 0.0),
             }])
 
             t = pd.concat([t, total], ignore_index=True)
 
-            st.dataframe(_mxn_style_df(t), use_container_width=True, hide_index=True)
-            g = base.copy()
-            _plot_oh_por_ceco(g[["CECO", "OH_PPT", "OH_PROY", "OH_REAL"]], "OH por CECO (PPT vs Proyectado vs Real)")
-        with tab_manual:
+            # Pinta rojo DIF_S/INGRESOS > 100
+            st.dataframe(_style_df_oh(t, thr=100), use_container_width=True, hide_index=True)
 
+            # ---------- GRÁFICA
+            g = base.copy()
+            _plot_oh_por_ceco(
+                g[["CECO", "OH_PPT", "OH_PROY", "OH_REAL"]],
+                "OH por CECO (PPT vs Proyectado vs Real)"
+            )
+
+        with tab_manual:
             ingreso_manual = st.number_input(
                 "Ingreso proyectado total de la compañía",
                 min_value=0.0,
                 step=1000.0,
                 value=float(st.session_state.get("PROY_OH_MANUAL_ING", 0.0))
             )
-
             st.session_state["PROY_OH_MANUAL_ING"] = ingreso_manual
+
             oh_proy_total_manual = pct_oh * ingreso_manual
 
             base_manual = base.copy()
             base_manual["OH_PROY"] = base_manual["share_ppt"] * oh_proy_total_manual
             base_manual["DIF_PROYECTADO"] = base_manual["OH_PROY"] - base_manual["OH_PPT"]
 
+            # NUEVO también en manual: usa ingreso REAL (oh_s_ing_total ya calculado)
+            base_manual["OH_S/INGRESOS"] = base_manual["share_ppt"] * oh_s_ing_total
+            base_manual["DIF_S/INGRESOS"] = base_manual["OH_REAL"] - base_manual["OH_S/INGRESOS"]
+
             t2 = base_manual[[
                 "CECO",
                 "OH_PPT",
                 "OH_PROY",
                 "OH_REAL",
+                "OH_S/INGRESOS",
+                "DIF_S/INGRESOS",
                 "DIF_PROYECTADO",
                 "DIF_REAL"
             ]].copy()
 
             total2 = pd.DataFrame([{
                 "CECO": "TOTAL",
-                "OH_PPT": t2["OH_PPT"].sum(),
-                "OH_PROY": t2["OH_PROY"].sum(),
-                "OH_REAL": t2["OH_REAL"].sum(),
-                "DIF_PROYECTADO": t2["DIF_PROYECTADO"].sum(),
-                "DIF_REAL": t2["DIF_REAL"].sum()
+                "OH_PPT": float(t2["OH_PPT"].sum() or 0.0),
+                "OH_PROY": float(t2["OH_PROY"].sum() or 0.0),
+                "OH_REAL": float(t2["OH_REAL"].sum() or 0.0),
+                "OH_S/INGRESOS": float(t2["OH_S/INGRESOS"].sum() or 0.0),
+                "DIF_S/INGRESOS": float(t2["DIF_S/INGRESOS"].sum() or 0.0),
+                "DIF_PROYECTADO": float(t2["DIF_PROYECTADO"].sum() or 0.0),
+                "DIF_REAL": float(t2["DIF_REAL"].sum() or 0.0),
             }])
 
             t2 = pd.concat([t2, total2], ignore_index=True)
 
-            st.dataframe(_mxn_style_df(t2), use_container_width=True, hide_index=True)
-            g2 = base_manual.copy()
-            _plot_oh_por_ceco(g2[["CECO", "OH_PPT", "OH_PROY", "OH_REAL"]], "OH por CECO (Ingreso manual)")
+            st.dataframe(_style_df_oh(t2, thr=100), use_container_width=True, hide_index=True)
 
+            g2 = base_manual.copy()
+            _plot_oh_por_ceco(
+                g2[["CECO", "OH_PPT", "OH_PROY", "OH_REAL"]],
+                "OH por CECO (Ingreso manual)"
+            )
     elif selected == "Modificaciones":
         st.subheader("Cambios base de datos")
 
@@ -4671,6 +4793,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
