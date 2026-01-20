@@ -1233,6 +1233,7 @@ else:
             "calendar-month",     # Meses PPT
             "arrow-left-right",
             "graph-up-arrow",  
+            "sliders",
             "bar-chart-line",
             "calendar-month",
             "tools",
@@ -1245,7 +1246,7 @@ else:
         selected = option_menu(
         menu_title=None,
         options=["Tablero", "Ingresos", "OH", "Departamentos", "Proyectos", "Consulta", "Meses PPT", "Variaciones", "Proyección","Proyección OH","YTD","Mensual", "Modificaciones", "Dashboard"],
-        icons=["clipboard-data", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "graph-up-arrow", "bar-chart-line", "calendar-month", "tools", "speedometer2"],
+        icons=["clipboard-data", "cash-coin", "building", "diagram-3", "kanban", "search", "calendar-month", "arrow-left-right", "graph-up-arrow", "sliders", "bar-chart-line", "calendar-month", "tools", "speedometer2"],
         default_index=0,
         orientation="horizontal",)
 
@@ -3885,8 +3886,7 @@ else:
             )
 
     elif selected == "Proyección OH":
-        MESES_ORDENADOS = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.",
-                        "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
+        MESES_ORDENADOS = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
 
         OH_PROYECTOS = ["8002", "8004"]
         CLAS_OH = ["COSS", "G.ADMN"]
@@ -3905,9 +3905,33 @@ else:
                 return "COSS"
             return s
 
-        # ---------------- UI
-        c1, _ = st.columns([2, 3])
+        def _mxn_style_df(df):
+            fmt = {}
+            for c in df.columns:
+                if c != "CECO":
+                    fmt[c] = "${:,.0f}"
+            return df.style.format(fmt)
+
+        def _plot_oh_por_ceco(df_plot, titulo):
+            fig = go.Figure()
+            fig.add_bar(x=df_plot["CECO"], y=df_plot["OH_PPT"], name="OH PPT")
+            fig.add_bar(x=df_plot["CECO"], y=df_plot["OH_PROY"], name="OH PROY")
+            fig.add_bar(x=df_plot["CECO"], y=df_plot["OH_REAL"], name="OH REAL")
+
+            fig.update_layout(
+                barmode="group",
+                title=titulo,
+                xaxis_title="CECO",
+                yaxis_title="Monto ($)",
+                height=450,
+                legend_title="Tipo",
+                margin=dict(l=20, r=20, t=60, b=20),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        c1, c2 = st.columns([2, 3])
         meses_seleccionado = filtro_meses(c1, df_ppt)
+        cecos_sel, ceco_nombre = filtro_ceco(c2)
+        cecos_sel = [str(x).strip() for x in (cecos_sel or [])]
 
         meses_sel = [norm_mes(m) for m in (
             meses_seleccionado if isinstance(meses_seleccionado, list)
@@ -3915,24 +3939,25 @@ else:
         )]
 
         tab_actual, tab_manual = st.tabs(
-            ["Proyección OH (Automática)", "Proyección OH (Ingreso manual)"]
+            ["Proyección OH", "Proyección OH (Ingreso manual)"]
         )
 
-        # ==========================================================
-        # TAB 1 — PROYECCIÓN AUTOMÁTICA (usa PROY_df_proyeccion)
-        # ==========================================================
         with tab_actual:
 
             # ---------- OH PPT
             df_ppt_oh = df_ppt.copy()
             df_ppt_oh["Mes_A"] = df_ppt_oh["Mes_A"].apply(norm_mes)
             df_ppt_oh["Clasificacion_A"] = df_ppt_oh["Clasificacion_A"].apply(_norm_clas)
+            df_ppt_oh["CeCo_A"] = df_ppt_oh["CeCo_A"].astype(str).str.strip()
+            df_ppt_oh["Proyecto_A"] = df_ppt_oh["Proyecto_A"].astype(str).str.strip()
 
             df_ppt_oh = df_ppt_oh[
                 (df_ppt_oh["Mes_A"].isin(meses_sel)) &
-                (df_ppt_oh["Proyecto_A"].astype(str).isin(OH_PROYECTOS)) &
+                (df_ppt_oh["Proyecto_A"].isin(OH_PROYECTOS)) &
                 (df_ppt_oh["Clasificacion_A"].isin(CLAS_OH))
             ]
+            if cecos_sel:
+                df_ppt_oh = df_ppt_oh[df_ppt_oh["CeCo_A"].isin(cecos_sel)]
 
             ppt_ceco = (
                 df_ppt_oh
@@ -3942,17 +3967,20 @@ else:
             )
 
             oh_ppt_total = float(ppt_ceco["OH_PPT"].sum() or 0.0)
-
-            # ---------- OH REAL
             df_real_oh = df_real.copy()
             df_real_oh["Mes_A"] = df_real_oh["Mes_A"].apply(norm_mes)
             df_real_oh["Clasificacion_A"] = df_real_oh["Clasificacion_A"].apply(_norm_clas)
+            df_real_oh["CeCo_A"] = df_real_oh["CeCo_A"].astype(str).str.strip()
+            df_real_oh["Proyecto_A"] = df_real_oh["Proyecto_A"].astype(str).str.strip()
 
             df_real_oh = df_real_oh[
                 (df_real_oh["Mes_A"].isin(meses_sel)) &
-                (df_real_oh["Proyecto_A"].astype(str).isin(OH_PROYECTOS)) &
+                (df_real_oh["Proyecto_A"].isin(OH_PROYECTOS)) &
                 (df_real_oh["Clasificacion_A"].isin(CLAS_OH))
             ]
+
+            if cecos_sel:
+                df_real_oh = df_real_oh[df_real_oh["CeCo_A"].isin(cecos_sel)]
 
             real_ceco = (
                 df_real_oh
@@ -3960,26 +3988,20 @@ else:
                 .sum()
                 .rename(columns={"Neto_A": "OH_REAL"})
             )
+            df_ing_ppt = df_ppt.copy()
+            df_ing_ppt["Mes_A"] = df_ing_ppt["Mes_A"].apply(norm_mes)
 
-            oh_real_total = float(real_ceco["OH_REAL"].sum() or 0.0)
-
-            # ---------- Ingresos PPT (toda la compañía)
-            df_ing_ppt = df_ppt[
-                (df_ppt["Mes_A"].apply(norm_mes).isin(meses_sel)) &
-                (df_ppt["Categoria_A"] == "INGRESO")
+            df_ing_ppt = df_ing_ppt[
+                (df_ing_ppt["Mes_A"].isin(meses_sel)) &
+                (df_ing_ppt["Categoria_A"] == "INGRESO")
             ]
 
             ing_ppt_total = float(df_ing_ppt["Neto_A"].sum() or 0.0)
-
             pct_oh = oh_ppt_total / ing_ppt_total if ing_ppt_total else 0.0
-
-            # ---------- Ingresos proyectados automáticos
             df_ing_proy = st.session_state.get("PROY_df_proyeccion", pd.DataFrame())
             ingreso_proy_total = float(df_ing_proy["Neto_A"].sum() or 0.0)
 
             oh_proy_total = pct_oh * ingreso_proy_total
-
-            # ---------- Base por CECO
             base = pd.DataFrame({
                 "CeCo_A": sorted(set(ppt_ceco["CeCo_A"]).union(real_ceco["CeCo_A"]))
             })
@@ -3989,16 +4011,22 @@ else:
 
             base["OH_PPT"] = base["OH_PPT"].fillna(0.0)
             base["OH_REAL"] = base["OH_REAL"].fillna(0.0)
-
             base["share_ppt"] = base["OH_PPT"] / oh_ppt_total if oh_ppt_total else 0.0
             base["OH_PROY"] = base["share_ppt"] * oh_proy_total
-
             base["DIF_PROYECTADO"] = base["OH_PROY"] - base["OH_PPT"]
             base["DIF_REAL"] = base["OH_REAL"] - base["OH_PPT"]
+            df_cecos_cat = cargar_datos(cecos_url)
+            df_cecos_cat["ceco"] = df_cecos_cat["ceco"].astype(str).str.strip()
+            df_cecos_cat["nombre"] = df_cecos_cat["nombre"].astype(str).str.strip()
 
-            # ---------- Tabla
+            base = base.merge(
+                df_cecos_cat.rename(columns={"ceco": "CeCo_A", "nombre": "CECO"}),
+                on="CeCo_A",
+                how="left"
+            )
+            base["CECO"] = base["CECO"].fillna(base["CeCo_A"])
             t = base[[
-                "CeCo_A",
+                "CECO",
                 "OH_PPT",
                 "OH_PROY",
                 "OH_REAL",
@@ -4007,7 +4035,7 @@ else:
             ]].copy()
 
             total = pd.DataFrame([{
-                "CeCo_A": "TOTAL",
+                "CECO": "TOTAL",
                 "OH_PPT": t["OH_PPT"].sum(),
                 "OH_PROY": t["OH_PROY"].sum(),
                 "OH_REAL": t["OH_REAL"].sum(),
@@ -4017,28 +4045,9 @@ else:
 
             t = pd.concat([t, total], ignore_index=True)
 
-            st.dataframe(t, use_container_width=True, hide_index=True)
-
-            # ---------- Gráfica por CECO
+            st.dataframe(_mxn_style_df(t), use_container_width=True, hide_index=True)
             g = base.copy()
-
-            fig, ax = plt.subplots()
-            x = range(len(g))
-
-            ax.bar(x, g["OH_PPT"], width=0.25, label="OH PPT")
-            ax.bar([i + 0.25 for i in x], g["OH_PROY"], width=0.25, label="OH PROY")
-            ax.bar([i + 0.50 for i in x], g["OH_REAL"], width=0.25, label="OH REAL")
-
-            ax.set_xticks([i + 0.25 for i in x])
-            ax.set_xticklabels(g["CeCo_A"], rotation=45, ha="right")
-            ax.set_title("OH por CECO (PPT vs Proyectado vs Real)")
-            ax.legend()
-
-            st.pyplot(fig)
-
-        # ==========================================================
-        # TAB 2 — INGRESO MANUAL
-        # ==========================================================
+            _plot_oh_por_ceco(g[["CECO", "OH_PPT", "OH_PROY", "OH_REAL"]], "OH por CECO (PPT vs Proyectado vs Real)")
         with tab_manual:
 
             ingreso_manual = st.number_input(
@@ -4049,15 +4058,14 @@ else:
             )
 
             st.session_state["PROY_OH_MANUAL_ING"] = ingreso_manual
-
-            oh_proy_total = pct_oh * ingreso_manual
+            oh_proy_total_manual = pct_oh * ingreso_manual
 
             base_manual = base.copy()
-            base_manual["OH_PROY"] = base_manual["share_ppt"] * oh_proy_total
+            base_manual["OH_PROY"] = base_manual["share_ppt"] * oh_proy_total_manual
             base_manual["DIF_PROYECTADO"] = base_manual["OH_PROY"] - base_manual["OH_PPT"]
 
             t2 = base_manual[[
-                "CeCo_A",
+                "CECO",
                 "OH_PPT",
                 "OH_PROY",
                 "OH_REAL",
@@ -4066,7 +4074,7 @@ else:
             ]].copy()
 
             total2 = pd.DataFrame([{
-                "CeCo_A": "TOTAL",
+                "CECO": "TOTAL",
                 "OH_PPT": t2["OH_PPT"].sum(),
                 "OH_PROY": t2["OH_PROY"].sum(),
                 "OH_REAL": t2["OH_REAL"].sum(),
@@ -4076,24 +4084,9 @@ else:
 
             t2 = pd.concat([t2, total2], ignore_index=True)
 
-            st.dataframe(t2, use_container_width=True, hide_index=True)
-
-            # ---------- Gráfica por CECO (manual)
+            st.dataframe(_mxn_style_df(t2), use_container_width=True, hide_index=True)
             g2 = base_manual.copy()
-
-            fig2, ax2 = plt.subplots()
-            x2 = range(len(g2))
-
-            ax2.bar(x2, g2["OH_PPT"], width=0.25, label="OH PPT")
-            ax2.bar([i + 0.25 for i in x2], g2["OH_PROY"], width=0.25, label="OH PROY")
-            ax2.bar([i + 0.50 for i in x2], g2["OH_REAL"], width=0.25, label="OH REAL")
-
-            ax2.set_xticks([i + 0.25 for i in x2])
-            ax2.set_xticklabels(g2["CeCo_A"], rotation=45, ha="right")
-            ax2.set_title("OH por CECO (Ingreso manual)")
-            ax2.legend()
-
-            st.pyplot(fig2)
+            _plot_oh_por_ceco(g2[["CECO", "OH_PPT", "OH_PROY", "OH_REAL"]], "OH por CECO (Ingreso manual)")
 
 
     elif selected == "YTD":
@@ -4892,6 +4885,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
