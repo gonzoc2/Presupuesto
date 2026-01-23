@@ -770,8 +770,15 @@ def seccion_analisis_por_clasificacion(
                 styles[j] = "background-color:#FF0000;color:white;font-weight:800;" if v > 10 else "background-color:#92D050;color:black;font-weight:800;"
             return styles
 
+        cols_mostrar_cla = [
+            "Clasificacion_A",
+            "PPT NOM", "REAL NOM", "DIF NOM", "DIF %",
+            "PPT %", "REAL %", "%Ingresos",
+            "RESTANTE"
+        ]
+
         st.dataframe(
-            df_cla.set_index("Clasificacion_A").style
+            df_cla[cols_mostrar_cla].set_index("Clasificacion_A").style
                 .apply(resaltar_dif_pct, axis=1)
                 .format({
                     "PPT NOM": "${:,.2f}",
@@ -786,9 +793,6 @@ def seccion_analisis_por_clasificacion(
             use_container_width=True
         )
 
-        # =========================
-        # MERGE CATEGORÍA
-        # =========================
         ppt_cat_nom2 = ppt_cat_nom.rename(columns={"Neto_A": "PPT NOM"}).copy()
         real_cat_nom2 = real_cat_nom.rename(columns={"Neto_A": "REAL NOM"}).copy()
 
@@ -801,10 +805,6 @@ def seccion_analisis_por_clasificacion(
         df_cat["DIF NOM"] = df_cat["REAL NOM"] - df_cat["PPT NOM"]
         df_cat["DIF %"] = np.where(df_cat["PPT NOM"] != 0, ((df_cat["REAL NOM"] / df_cat["PPT NOM"]) - 1) * 100, 0.0)
         df_cat["%Ingresos"] = df_cat["REAL %"] - df_cat["PPT %"]
-
-        # =========================
-        # MERGE CUENTAS
-        # =========================
         ppt_cta_nom2 = ppt_cta_nom.rename(columns={"Neto_A": "PPT NOM"}).copy()
         real_cta_nom2 = real_cta_nom.rename(columns={"Neto_A": "REAL NOM"}).copy()
 
@@ -833,10 +833,6 @@ def seccion_analisis_por_clasificacion(
         # ✅ ING_PROY (filtrado por proyecto) + RESTANTE
         df_out["ING_PROY"] = float(ing_proy_sel)
         df_out["RESTANTE"] = (df_out["%Ingresos"] / 100.0) * df_out["ING_PROY"]
-
-        # =========================
-        # AGRID
-        # =========================
         gb = GridOptionsBuilder.from_dataframe(df_out)
         gb.configure_default_column(resizable=True, sortable=True, filter=True)
 
@@ -2162,7 +2158,7 @@ else:
                 bg = GRIS_1 if row.name % 2 == 0 else GRIS_2
                 return [f"background-color:{bg}; color:black;"] * len(row)
 
-            st.subheader(f"Operación por proyecto (PROYECTADO) — {mes_act.upper()} (LM={mes_ant_lm.upper()})")
+            st.subheader(f"Operación por proyecto (Proyectado)")
 
             st.dataframe(
                 out.style
@@ -5564,6 +5560,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
