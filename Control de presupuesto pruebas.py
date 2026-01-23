@@ -1511,199 +1511,6 @@ else:
     st.session_state["PROY_df_ing"] = df_ing
     st.session_state["PROY_df_merged"] = df_merged
 
-
-
-    def tabla_proyectos_proyectado(df_ppt, df_pro, meses_seleccionado, df_proyectos):
-        """
-        NUEVO BLOQUE (NO USA REAL)
-
-        Salida:
-        PROYECTO | ING_PROY | VAR.PPT | COSS_PROY | VAR. COSS | G.ADM_PROY | VAR. G.ADM
-
-        VAR.PPT   = (ING_PROY / ING_PPT) - 1
-        VAR. COSS = (COSS_PROY / COSS_PPT) - 1
-        VAR. G.ADM= (G.ADM_PROY / G.ADM_PPT) - 1
-        """
-        if not meses_seleccionado:
-            st.error("Favor de seleccionar por lo menos un mes")
-            return None
-
-        meses_sel = [str(m).strip() for m in meses_seleccionado]
-
-        df_ppt = df_ppt.copy()
-        df_pro = df_pro.copy()
-
-        # --- normaliza columnas (igual que tu bloque)
-        for df in (df_ppt, df_pro):
-            df["Proyecto_A"] = df["Proyecto_A"].astype(str).str.strip().str.replace(".0", "", regex=False)
-            df["CeCo_A"] = df["CeCo_A"].astype(str).str.strip()
-            df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
-            df["Clasificacion_A"] = df["Clasificacion_A"].astype(str).str.strip()
-            df["Categoria_A"] = df["Categoria_A"].astype(str).str.strip()
-            df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
-
-        # --- mapa proyectos
-        df_map = df_proyectos.copy()
-        df_map["proyectos"] = df_map["proyectos"].astype(str).str.strip().str.replace(".0", "", regex=False)
-        df_map["nombre"] = df_map["nombre"].astype(str).str.strip()
-        mapa = dict(zip(df_map["proyectos"], df_map["nombre"]))
-
-        EXCLUIR = {"8002", "8003", "8004", "0"}
-        proyectos_visibles = [p for p in df_map["proyectos"].tolist() if p not in EXCLUIR]
-
-        # usa tu variable global si existe; si no, cae a lista vacía
-        try:
-            lista_proyectos = list_pro
-        except NameError:
-            lista_proyectos = []
-
-        rows = []
-        for p in proyectos_visibles:
-            nombre = mapa.get(p, p)
-            codigo_pro = [p]
-            pro = nombre
-
-            # --- PPT
-            ing_ppt = float(ingreso(df_ppt, meses_sel, codigo_pro, pro) or 0.0)
-            coss_ppt, _ = coss(df_ppt, meses_sel, codigo_pro, pro, lista_proyectos)
-            coss_ppt = float(coss_ppt or 0.0)
-            patio_ppt = float(patio(df_ppt, meses_sel, codigo_pro, pro) or 0.0)
-            coss_total_ppt = coss_ppt + patio_ppt
-            gadm_ppt, _ = gadmn(df_ppt, meses_sel, codigo_pro, pro, lista_proyectos)
-            gadm_ppt = float(gadm_ppt or 0.0)
-
-            # --- PROYECTADO (en lugar de REAL)
-            ing_proy = float(ingreso(df_pro, meses_sel, codigo_pro, pro) or 0.0)
-            coss_proy, _ = coss(df_pro, meses_sel, codigo_pro, pro, lista_proyectos)
-            coss_proy = float(coss_proy or 0.0)
-            patio_proy = float(patio(df_pro, meses_sel, codigo_pro, pro) or 0.0)
-            coss_total_proy = coss_proy + patio_proy
-            gadm_proy, _ = gadmn(df_pro, meses_sel, codigo_pro, pro, lista_proyectos)
-            gadm_proy = float(gadm_proy or 0.0)
-
-            rows.append({
-                "Proyecto_A": p,
-                "PROYECTO": nombre,
-                "ING_PPT": ing_ppt,
-                "ING_PROY": ing_proy,
-                "COSS_PPT": coss_total_ppt,
-                "COSS_PROY": coss_total_proy,
-                "GADM_PPT": gadm_ppt,
-                "GADM_PROY": gadm_proy,
-            })
-
-        tabla = pd.DataFrame(rows).fillna(0.0)
-
-        # --- variaciones vs PPT
-        tabla["VAR.PPT"] = np.where(
-            tabla["ING_PPT"] != 0,
-            (tabla["ING_PROY"] / tabla["ING_PPT"]) - 1,
-            0.0
-        )
-        tabla["VAR. COSS"] = np.where(
-            tabla["COSS_PPT"] != 0,
-            (tabla["COSS_PROY"] / tabla["COSS_PPT"]) - 1,
-            0.0
-        )
-        tabla["VAR. G.ADM"] = np.where(
-            tabla["GADM_PPT"] != 0,
-            (tabla["GADM_PROY"] / tabla["GADM_PPT"]) - 1,
-            0.0
-        )
-
-        def _arrow(v, tol=1e-9):
-            try:
-                v = float(v)
-            except:
-                return ""
-            if v > tol:
-                return " ↑"
-            if v < -tol:
-                return " ↓"
-            return " →"
-
-        tabla["VAR.PPT_TXT"] = tabla["VAR.PPT"].apply(lambda x: f"{x:.2%}{_arrow(x)}")
-        tabla["VAR. COSS_TXT"] = tabla["VAR. COSS"].apply(lambda x: f"{x:.2%}{_arrow(x)}")
-        tabla["VAR. G.ADM_TXT"] = tabla["VAR. G.ADM"].apply(lambda x: f"{x:.2%}{_arrow(x)}")
-
-        out = tabla[[
-            "PROYECTO",
-            "ING_PROY", "VAR.PPT_TXT",
-            "COSS_PROY", "VAR. COSS_TXT",
-            "GADM_PROY", "VAR. G.ADM_TXT"
-        ]].copy()
-
-        # --- TOTAL
-        total_ing_proy  = float(tabla["ING_PROY"].sum())
-        total_ing_ppt   = float(tabla["ING_PPT"].sum())
-        total_coss_proy = float(tabla["COSS_PROY"].sum())
-        total_coss_ppt  = float(tabla["COSS_PPT"].sum())
-        total_gadm_proy = float(tabla["GADM_PROY"].sum())
-        total_gadm_ppt  = float(tabla["GADM_PPT"].sum())
-
-        total_var_ppt  = (total_ing_proy  / total_ing_ppt  - 1) if total_ing_ppt  != 0 else 0.0
-        total_var_coss = (total_coss_proy / total_coss_ppt - 1) if total_coss_ppt != 0 else 0.0
-        total_var_gadm = (total_gadm_proy / total_gadm_ppt - 1) if total_gadm_ppt != 0 else 0.0
-
-        total_row = pd.DataFrame([{
-            "PROYECTO": "TOTAL",
-            "ING_PROY": total_ing_proy,
-            "VAR.PPT_TXT": f"{total_var_ppt:.2%}{_arrow(total_var_ppt)}",
-            "COSS_PROY": total_coss_proy,
-            "VAR. COSS_TXT": f"{total_var_coss:.2%}{_arrow(total_var_coss)}",
-            "GADM_PROY": total_gadm_proy,
-            "VAR. G.ADM_TXT": f"{total_var_gadm:.2%}{_arrow(total_var_gadm)}",
-        }])
-
-        out = pd.concat([out, total_row], ignore_index=True)
-
-        # --- estilos (idénticos a tu bloque)
-        BLUE = "#0B2A4A"
-        GRIS_1 = "#FFFFFF"
-        GRIS_2 = "#F2F2F2"
-        BORDE = "#D0D0D0"
-
-        def estilo_filas(row):
-            if str(row["PROYECTO"]).upper() == "TOTAL":
-                return ["background-color:#FFFFFF; color:black; font-weight:800;"] * len(row)
-            bg = GRIS_1 if row.name % 2 == 0 else GRIS_2
-            return [f"background-color:{bg}; color:black;"] * len(row)
-
-        st.subheader("Operación por proyecto (PROYECTADO)")
-
-        st.dataframe(
-            out.style
-                .apply(estilo_filas, axis=1)
-                .set_table_styles([
-                    {"selector": "thead th",
-                    "props": f"background-color:{BLUE};color:white;font-weight:900;font-size:13px;border:1px solid {BORDE};text-align:center;"},
-                    {"selector": "tbody td",
-                    "props": f"border:1px solid {BORDE};font-size:12px;"},
-                    {"selector": "table",
-                    "props": "border-collapse:collapse; width:100%;"},
-                ])
-                .format({
-                    "ING_PROY": "${:,.2f}",
-                    "COSS_PROY": "${:,.2f}",
-                    "GADM_PROY": "${:,.2f}",
-                    "VAR.PPT_TXT": "{}",
-                    "VAR. COSS_TXT": "{}",
-                    "VAR. G.ADM_TXT": "{}",
-                })
-                .set_properties(subset=["PROYECTO"], **{"text-align": "left", "font-weight": "700"})
-                .set_properties(subset=[
-                    "ING_PROY", "VAR.PPT_TXT",
-                    "COSS_PROY", "VAR. COSS_TXT",
-                    "GADM_PROY", "VAR. G.ADM_TXT"
-                ], **{"text-align": "right"}),
-            use_container_width=True,
-            height=420
-        )
-
-        return out
-
-
-
     if selected == "Tablero":
 
         def fmt_mxn(x):
@@ -2057,7 +1864,194 @@ else:
             )
 
             return df_res, meses_sel_ord
+        def tabla_proyectos_proyectado(df_ppt, df_pro, meses_seleccionado, df_proyectos):
+            """
+            NUEVO BLOQUE (NO USA REAL)
 
+            Salida:
+            PROYECTO | ING_PROY | VAR.PPT | COSS_PROY | VAR. COSS | G.ADM_PROY | VAR. G.ADM
+
+            VAR.PPT   = (ING_PROY / ING_PPT) - 1
+            VAR. COSS = (COSS_PROY / COSS_PPT) - 1
+            VAR. G.ADM= (G.ADM_PROY / G.ADM_PPT) - 1
+            """
+            if not meses_seleccionado:
+                st.error("Favor de seleccionar por lo menos un mes")
+                return None
+
+            meses_sel = [str(m).strip() for m in meses_seleccionado]
+
+            df_ppt = df_ppt.copy()
+            df_pro = df_pro.copy()
+
+            # --- normaliza columnas (igual que tu bloque)
+            for df in (df_ppt, df_pro):
+                df["Proyecto_A"] = df["Proyecto_A"].astype(str).str.strip().str.replace(".0", "", regex=False)
+                df["CeCo_A"] = df["CeCo_A"].astype(str).str.strip()
+                df["Mes_A"] = df["Mes_A"].astype(str).str.strip()
+                df["Clasificacion_A"] = df["Clasificacion_A"].astype(str).str.strip()
+                df["Categoria_A"] = df["Categoria_A"].astype(str).str.strip()
+                df["Neto_A"] = pd.to_numeric(df["Neto_A"], errors="coerce").fillna(0.0)
+
+            # --- mapa proyectos
+            df_map = df_proyectos.copy()
+            df_map["proyectos"] = df_map["proyectos"].astype(str).str.strip().str.replace(".0", "", regex=False)
+            df_map["nombre"] = df_map["nombre"].astype(str).str.strip()
+            mapa = dict(zip(df_map["proyectos"], df_map["nombre"]))
+
+            EXCLUIR = {"8002", "8003", "8004", "0"}
+            proyectos_visibles = [p for p in df_map["proyectos"].tolist() if p not in EXCLUIR]
+
+            # usa tu variable global si existe; si no, cae a lista vacía
+            try:
+                lista_proyectos = list_pro
+            except NameError:
+                lista_proyectos = []
+
+            rows = []
+            for p in proyectos_visibles:
+                nombre = mapa.get(p, p)
+                codigo_pro = [p]
+                pro = nombre
+
+                # --- PPT
+                ing_ppt = float(ingreso(df_ppt, meses_sel, codigo_pro, pro) or 0.0)
+                coss_ppt, _ = coss(df_ppt, meses_sel, codigo_pro, pro, lista_proyectos)
+                coss_ppt = float(coss_ppt or 0.0)
+                patio_ppt = float(patio(df_ppt, meses_sel, codigo_pro, pro) or 0.0)
+                coss_total_ppt = coss_ppt + patio_ppt
+                gadm_ppt, _ = gadmn(df_ppt, meses_sel, codigo_pro, pro, lista_proyectos)
+                gadm_ppt = float(gadm_ppt or 0.0)
+
+                # --- PROYECTADO (en lugar de REAL)
+                ing_proy = float(ingreso(df_pro, meses_sel, codigo_pro, pro) or 0.0)
+                coss_proy, _ = coss(df_pro, meses_sel, codigo_pro, pro, lista_proyectos)
+                coss_proy = float(coss_proy or 0.0)
+                patio_proy = float(patio(df_pro, meses_sel, codigo_pro, pro) or 0.0)
+                coss_total_proy = coss_proy + patio_proy
+                gadm_proy, _ = gadmn(df_pro, meses_sel, codigo_pro, pro, lista_proyectos)
+                gadm_proy = float(gadm_proy or 0.0)
+
+                rows.append({
+                    "Proyecto_A": p,
+                    "PROYECTO": nombre,
+                    "ING_PPT": ing_ppt,
+                    "ING_PROY": ing_proy,
+                    "COSS_PPT": coss_total_ppt,
+                    "COSS_PROY": coss_total_proy,
+                    "GADM_PPT": gadm_ppt,
+                    "GADM_PROY": gadm_proy,
+                })
+
+            tabla = pd.DataFrame(rows).fillna(0.0)
+
+            # --- variaciones vs PPT
+            tabla["VAR.PPT"] = np.where(
+                tabla["ING_PPT"] != 0,
+                (tabla["ING_PROY"] / tabla["ING_PPT"]) - 1,
+                0.0
+            )
+            tabla["VAR. COSS"] = np.where(
+                tabla["COSS_PPT"] != 0,
+                (tabla["COSS_PROY"] / tabla["COSS_PPT"]) - 1,
+                0.0
+            )
+            tabla["VAR. G.ADM"] = np.where(
+                tabla["GADM_PPT"] != 0,
+                (tabla["GADM_PROY"] / tabla["GADM_PPT"]) - 1,
+                0.0
+            )
+
+            def _arrow(v, tol=1e-9):
+                try:
+                    v = float(v)
+                except:
+                    return ""
+                if v > tol:
+                    return " ↑"
+                if v < -tol:
+                    return " ↓"
+                return " →"
+
+            tabla["VAR.PPT_TXT"] = tabla["VAR.PPT"].apply(lambda x: f"{x:.2%}{_arrow(x)}")
+            tabla["VAR. COSS_TXT"] = tabla["VAR. COSS"].apply(lambda x: f"{x:.2%}{_arrow(x)}")
+            tabla["VAR. G.ADM_TXT"] = tabla["VAR. G.ADM"].apply(lambda x: f"{x:.2%}{_arrow(x)}")
+
+            out = tabla[[
+                "PROYECTO",
+                "ING_PROY", "VAR.PPT_TXT",
+                "COSS_PROY", "VAR. COSS_TXT",
+                "GADM_PROY", "VAR. G.ADM_TXT"
+            ]].copy()
+
+            # --- TOTAL
+            total_ing_proy  = float(tabla["ING_PROY"].sum())
+            total_ing_ppt   = float(tabla["ING_PPT"].sum())
+            total_coss_proy = float(tabla["COSS_PROY"].sum())
+            total_coss_ppt  = float(tabla["COSS_PPT"].sum())
+            total_gadm_proy = float(tabla["GADM_PROY"].sum())
+            total_gadm_ppt  = float(tabla["GADM_PPT"].sum())
+
+            total_var_ppt  = (total_ing_proy  / total_ing_ppt  - 1) if total_ing_ppt  != 0 else 0.0
+            total_var_coss = (total_coss_proy / total_coss_ppt - 1) if total_coss_ppt != 0 else 0.0
+            total_var_gadm = (total_gadm_proy / total_gadm_ppt - 1) if total_gadm_ppt != 0 else 0.0
+
+            total_row = pd.DataFrame([{
+                "PROYECTO": "TOTAL",
+                "ING_PROY": total_ing_proy,
+                "VAR.PPT_TXT": f"{total_var_ppt:.2%}{_arrow(total_var_ppt)}",
+                "COSS_PROY": total_coss_proy,
+                "VAR. COSS_TXT": f"{total_var_coss:.2%}{_arrow(total_var_coss)}",
+                "GADM_PROY": total_gadm_proy,
+                "VAR. G.ADM_TXT": f"{total_var_gadm:.2%}{_arrow(total_var_gadm)}",
+            }])
+
+            out = pd.concat([out, total_row], ignore_index=True)
+
+            # --- estilos (idénticos a tu bloque)
+            BLUE = "#0B2A4A"
+            GRIS_1 = "#FFFFFF"
+            GRIS_2 = "#F2F2F2"
+            BORDE = "#D0D0D0"
+
+            def estilo_filas(row):
+                if str(row["PROYECTO"]).upper() == "TOTAL":
+                    return ["background-color:#FFFFFF; color:black; font-weight:800;"] * len(row)
+                bg = GRIS_1 if row.name % 2 == 0 else GRIS_2
+                return [f"background-color:{bg}; color:black;"] * len(row)
+
+            st.subheader("Operación por proyecto (PROYECTADO)")
+
+            st.dataframe(
+                out.style
+                    .apply(estilo_filas, axis=1)
+                    .set_table_styles([
+                        {"selector": "thead th",
+                        "props": f"background-color:{BLUE};color:white;font-weight:900;font-size:13px;border:1px solid {BORDE};text-align:center;"},
+                        {"selector": "tbody td",
+                        "props": f"border:1px solid {BORDE};font-size:12px;"},
+                        {"selector": "table",
+                        "props": "border-collapse:collapse; width:100%;"},
+                    ])
+                    .format({
+                        "ING_PROY": "${:,.2f}",
+                        "COSS_PROY": "${:,.2f}",
+                        "GADM_PROY": "${:,.2f}",
+                        "VAR.PPT_TXT": "{}",
+                        "VAR. COSS_TXT": "{}",
+                        "VAR. G.ADM_TXT": "{}",
+                    })
+                    .set_properties(subset=["PROYECTO"], **{"text-align": "left", "font-weight": "700"})
+                    .set_properties(subset=[
+                        "ING_PROY", "VAR.PPT_TXT",
+                        "COSS_PROY", "VAR. COSS_TXT",
+                        "GADM_PROY", "VAR. G.ADM_TXT"
+                    ], **{"text-align": "right"}),
+                use_container_width=True,
+                height=420
+            )
+
+            return out
 
         df_res, meses_sel = resumen_empresa(df_ppt, df_real)
         st.divider()
@@ -5427,6 +5421,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
