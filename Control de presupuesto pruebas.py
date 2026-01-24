@@ -12,6 +12,7 @@ from urllib.parse import urlparse, parse_qs
 import streamlit.components.v1 as components
 import unicodedata
 import re
+import plotly.express as px
 
 st.set_page_config(
     page_title="Control de Presupuesto",
@@ -6317,6 +6318,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
