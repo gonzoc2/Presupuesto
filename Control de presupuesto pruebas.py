@@ -1588,62 +1588,68 @@ else:
             border: 0 !important;
         }
 
-        /* ✅ LABEL SIEMPRE BLANCO (más específico y cubre small) */
-        div[data-testid="stMetricLabel"],
-        div[data-testid="stMetricLabel"] *{
+        /* ✅ FIX REAL: El label NO siempre vive en stMetricLabel.
+        Forzamos blanco a todo el texto del KPI, y luego re-aseguramos value/delta. */
+        div[data-testid="stMetric"] p,
+        div[data-testid="stMetric"] span,
+        div[data-testid="stMetric"] small,
+        div[data-testid="stMetric"] div{
             color: #ffffff !important;
             opacity: 1 !important;
-            font-size: 12px !important;
-            line-height: 14px !important;
-            font-weight: 800 !important;
-            margin: 0 !important;
         }
 
-        /* Valor en blanco */
-        div[data-testid="stMetricValue"]{
+        /* Valor en blanco (por si algo lo pisa) */
+        div[data-testid="stMetricValue"],
+        div[data-testid="stMetricValue"] *{
             color: #ffffff !important;
             font-size: 22px !important;
             font-weight: 900 !important;
         }
 
-        /* ✅ Delta (burbuja) SÓLIDA, no transparente */
-        div[data-testid="stMetricDelta"]{
+        /* ====== DELTA: burbuja NO transparente ====== */
+        div[data-testid="stMetricDelta"],
+        div[data-testid="stMetricDelta"] *{
             color: #ffffff !important;
+            opacity: 1 !important;
             font-weight: 900 !important;
-            padding: 4px 10px !important;
-            border-radius: 999px !important;
-            display: inline-block !important;
-            margin-top: 6px !important;
+        }
+
+        /* Base sólida (si no detectamos signo, queda gris sólido) */
+        div[data-testid="stMetricDelta"]{
+            background: #6b7280 !important;   /* gris */
             border: 1px solid rgba(255,255,255,.25) !important;
-            background: #6b7280 !important; /* gris sólido default */
         }
 
-        /* ✅ Verde/Rojo por clases nativas de Streamlit */
-        div[data-testid="stMetricDelta"].stMetricDeltaPositive{
-            background: #1f7a3a !important; /* verde sólido */
-        }
-        div[data-testid="stMetricDelta"].stMetricDeltaNegative{
-            background: #b42318 !important; /* rojo sólido */
-        }
+        /* ✅ Si Streamlit sí pone clases, úsalo */
+        div[data-testid="stMetricDelta"].stMetricDeltaPositive{ background: #1f7a3a !important; }
+        div[data-testid="stMetricDelta"].stMetricDeltaNegative{ background: #b42318 !important; }
 
-        /* ✅ Fallback cuando no vienen clases: detecta ícono up/down */
+        /* ✅ Fallback por flecha SVG (tu screenshot muestra flecha dentro del círculo) */
         div[data-testid="stMetricDelta"] svg{
             fill: #ffffff !important;
         }
-        div[data-testid="stMetricDelta"]:has(svg[aria-label*="up"]),
-        div[data-testid="stMetricDelta"]:has(svg[aria-label*="increase"]){
-            background: #1f7a3a !important;
-        }
+
+        /* Si hay flecha abajo -> rojo */
         div[data-testid="stMetricDelta"]:has(svg[aria-label*="down"]),
-        div[data-testid="stMetricDelta"]:has(svg[aria-label*="decrease"]){
+        div[data-testid="stMetricDelta"]:has(svg[aria-label*="decrease"]),
+        div[data-testid="stMetricDelta"]:has(svg[data-testid*="down"]),
+        div[data-testid="stMetricDelta"]:has(svg[data-icon*="down"]){
             background: #b42318 !important;
+        }
+
+        /* Si hay flecha arriba -> verde */
+        div[data-testid="stMetricDelta"]:has(svg[aria-label*="up"]),
+        div[data-testid="stMetricDelta"]:has(svg[aria-label*="increase"]),
+        div[data-testid="stMetricDelta"]:has(svg[data-testid*="up"]),
+        div[data-testid="stMetricDelta"]:has(svg[data-icon*="up"]){
+            background: #1f7a3a !important;
         }
 
         /* Quita espacios extras debajo de widgets */
         div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stMetric"]) { margin-bottom: 0.35rem; }
         </style>
         """, unsafe_allow_html=True)
-
+        
         def fmt_mxn(x):
             try:
                 return f"${float(x):,.0f}"
@@ -6275,6 +6281,7 @@ else:
             return out_show
 
         tabla_diferencias(df_ppt, df_base)
+
 
 
 
