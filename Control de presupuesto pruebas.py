@@ -1599,6 +1599,18 @@ else:
             margin: 0 !important;
         }
 
+        /* ✅ CAMBIO 1: Label SIEMPRE blanco */
+        div[data-testid="stMetricLabel"] p,
+        div[data-testid="stMetricLabel"] span,
+        div[data-testid="stMetricLabel"] div{
+            color: #ffffff !important;
+            opacity: 1 !important;
+            font-size: 12px !important;
+            line-height: 14px !important;
+            font-weight: 800 !important;
+            margin: 0 !important;
+        }
+
         /* Valor en blanco */
         div[data-testid="stMetricValue"]{
             color: #ffffff !important;
@@ -1606,16 +1618,32 @@ else:
             font-weight: 900 !important;
         }
 
-        /* Delta NO transparente (pastilla sólida) */
+        /* ✅ CAMBIO 2: Delta visible y con color (pill sólida) */
         div[data-testid="stMetricDelta"]{
             color: #ffffff !important;
             font-weight: 900 !important;
-            background: #183f5f !important;   /* sólido */
             padding: 4px 10px !important;
             border-radius: 999px !important;
             display: inline-block !important;
             margin-top: 6px !important;
             border: 1px solid rgba(255,255,255,.25) !important;
+            background: rgba(0,0,0,.15) !important; /* default */
+        }
+
+        /* Si Streamlit aplica clases positivas/negativas */
+        div[data-testid="stMetricDelta"].stMetricDeltaPositive{
+            background: #1f7a3a !important; /* verde */
+        }
+        div[data-testid="stMetricDelta"].stMetricDeltaNegative{
+            background: #b42318 !important; /* rojo */
+        }
+
+        /* Fallback moderno: si el texto trae “-” lo pintamos rojo; si trae “+” lo pintamos verde */
+        div[data-testid="stMetric"]:has(div[data-testid="stMetricDelta"] div:contains("+")) div[data-testid="stMetricDelta"]{
+            background: #1f7a3a !important;
+        }
+        div[data-testid="stMetric"]:has(div[data-testid="stMetricDelta"] div:contains("-")) div[data-testid="stMetricDelta"]{
+            background: #b42318 !important;
         }
 
         /* Quita espacios extras debajo de widgets */
@@ -2275,7 +2303,7 @@ else:
                 bg = GRIS_1 if row.name % 2 == 0 else GRIS_2
                 return [f"background-color:{bg}; color:black;"] * len(row)
 
-            st.markdown(f'<div class="header-pill">Operación por proyecto (PROYECTADO) — {mes_act.upper()} (LM={mes_ant_lm.upper()})</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="header-pill">Operación por proyecto (PROYECTADO)</div>', unsafe_allow_html=True)
 
             st.dataframe(
                 out.style
@@ -6257,6 +6285,7 @@ else:
             return out_show
 
         tabla_diferencias(df_ppt, df_base)
+
 
 
 
