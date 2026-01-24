@@ -1588,21 +1588,9 @@ else:
             border: 0 !important;
         }
 
-        /* Label en blanco */
-        div[data-testid="stMetricLabel"] p,
-        div[data-testid="stMetricLabel"] span,
-        div[data-testid="stMetricLabel"] div{
-            color: rgba(255,255,255,.95) !important;
-            font-size: 12px !important;
-            line-height: 14px !important;
-            font-weight: 800 !important;
-            margin: 0 !important;
-        }
-
-        /* ✅ CAMBIO 1: Label SIEMPRE blanco */
-        div[data-testid="stMetricLabel"] p,
-        div[data-testid="stMetricLabel"] span,
-        div[data-testid="stMetricLabel"] div{
+        /* ✅ LABEL SIEMPRE BLANCO (más específico y cubre small) */
+        div[data-testid="stMetricLabel"],
+        div[data-testid="stMetricLabel"] *{
             color: #ffffff !important;
             opacity: 1 !important;
             font-size: 12px !important;
@@ -1618,7 +1606,7 @@ else:
             font-weight: 900 !important;
         }
 
-        /* ✅ CAMBIO 2: Delta visible y con color (pill sólida) */
+        /* ✅ Delta (burbuja) SÓLIDA, no transparente */
         div[data-testid="stMetricDelta"]{
             color: #ffffff !important;
             font-weight: 900 !important;
@@ -1627,22 +1615,27 @@ else:
             display: inline-block !important;
             margin-top: 6px !important;
             border: 1px solid rgba(255,255,255,.25) !important;
-            background: rgba(0,0,0,.15) !important; /* default */
+            background: #6b7280 !important; /* gris sólido default */
         }
 
-        /* Si Streamlit aplica clases positivas/negativas */
+        /* ✅ Verde/Rojo por clases nativas de Streamlit */
         div[data-testid="stMetricDelta"].stMetricDeltaPositive{
-            background: #1f7a3a !important; /* verde */
+            background: #1f7a3a !important; /* verde sólido */
         }
         div[data-testid="stMetricDelta"].stMetricDeltaNegative{
-            background: #b42318 !important; /* rojo */
+            background: #b42318 !important; /* rojo sólido */
         }
 
-        /* Fallback moderno: si el texto trae “-” lo pintamos rojo; si trae “+” lo pintamos verde */
-        div[data-testid="stMetric"]:has(div[data-testid="stMetricDelta"] div:contains("+")) div[data-testid="stMetricDelta"]{
+        /* ✅ Fallback cuando no vienen clases: detecta ícono up/down */
+        div[data-testid="stMetricDelta"] svg{
+            fill: #ffffff !important;
+        }
+        div[data-testid="stMetricDelta"]:has(svg[aria-label*="up"]),
+        div[data-testid="stMetricDelta"]:has(svg[aria-label*="increase"]){
             background: #1f7a3a !important;
         }
-        div[data-testid="stMetric"]:has(div[data-testid="stMetricDelta"] div:contains("-")) div[data-testid="stMetricDelta"]{
+        div[data-testid="stMetricDelta"]:has(svg[aria-label*="down"]),
+        div[data-testid="stMetricDelta"]:has(svg[aria-label*="decrease"]){
             background: #b42318 !important;
         }
 
@@ -1651,9 +1644,6 @@ else:
         </style>
         """, unsafe_allow_html=True)
 
-        # =========================
-        # Helpers
-        # =========================
         def fmt_mxn(x):
             try:
                 return f"${float(x):,.0f}"
@@ -6285,6 +6275,7 @@ else:
             return out_show
 
         tabla_diferencias(df_ppt, df_base)
+
 
 
 
