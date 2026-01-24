@@ -1293,11 +1293,13 @@ else:
     if st.session_state["rol"] in ["admin"] and "ESGARI" in st.session_state["proyectos"]:
         selected = option_menu(
             menu_title=None,
-            options=["Tablero", "Ingresos", "Consulta", "Variaciones", "Proyectos", "Proyección", "Ajustado", "YTD", "Mensual","OH","Departamentos","Proyección OH", "Modificaciones", "Dashboard"],
+            options=["Tablero", "Ingresos", "Consulta", "Vista Dep.","Vista Proy.", "Variaciones", "Proyectos", "Proyección", "Ajustado", "YTD", "Mensual","OH","Departamentos","Proyección OH", "Modificaciones", "Dashboard"],
             icons=[
             "clipboard-data",
             "cash-coin",
             "search",
+            "diagram-3-fill",
+            "kanban-fill",
             "arrow-left-right",
             "kanban",
             "graph-up-arrow",
@@ -1318,27 +1320,27 @@ else:
     elif st.session_state["rol"] == "director" or st.session_state["rol"] == "admin":
         selected = option_menu(
         menu_title=None,
-        options=["Tablero", "Ingresos", "Consulta", "Variaciones", "Proyectos", "Proyección", "Ajustado", "YTD", "Mensual","OH","Departamentos","Proyección OH", "Modificaciones", "Dashboard"],
-        icons=["clipboard-data", "cash-coin", "search", "arrow-left-right", "kanban", "graph-up-arrow", "bar-chart-line","calendar-range", "calendar-month", "building", "diagram-3", "sliders", "tools", "speedometer2"],
+        options=["Tablero", "Ingresos", "Consulta","Vista Dep.","Vista Proy.", "Variaciones", "Proyectos", "Proyección", "Ajustado", "YTD", "Mensual","OH","Departamentos","Proyección OH", "Modificaciones", "Dashboard"],
+        icons=["clipboard-data", "cash-coin", "search","diagram-3-fill","kanban-fill", "arrow-left-right", "kanban", "graph-up-arrow", "bar-chart-line","calendar-range", "calendar-month", "building", "diagram-3", "sliders", "tools", "speedometer2"],
         default_index=0,
         orientation="horizontal",)
 
     elif st.session_state["rol"] == "gerente":
         selected = option_menu(
         menu_title=None,
-        options=["Ingresos", "Consulta"],
-        icons=["bar-chart-steps", "search"],
+        options=["Ingresos", "Consulta", "Vista Proy."],
+        icons=["bar-chart-steps", "search", "kanban-fill"],
         default_index=0,
         orientation="horizontal",)
 
     elif st.session_state["rol"] == "ceco":
         selected = option_menu(
         menu_title=None,
-        options=[ "Consulta", "Departamentos"],
-        icons=[ "search", "diagram-3"],
+        options=[ "Consulta", "Vista Dep.","Departamentos"],
+        icons=[ "search", "diagram-3-fill", "diagram-3"],
         default_index=0,
         orientation="horizontal",)
-
+        
     def proyecciones(ingreso_pro_fut, df_ext_var, df_sum, oh_pro, intereses, patio_pro, coss_pro_ori, gadmn_pro_ori):
         utilidad_op = ingreso_pro_fut - coss_pro_ori - gadmn_pro_ori
         por_util_op = utilidad_op / ingreso_pro_fut if ingreso_pro_fut else 0
@@ -2649,6 +2651,761 @@ else:
         proyecto_codigo, proyecto_nombre = filtro_pro(col3)
 
         tabla_Consultas(df_ppt, df_real, meses_seleccionado, ceco_codigo, proyecto_codigo)
+
+    elif selected == "Vista Dep.":
+
+        st.markdown("""
+        <style>
+        .stApp { background: #f5f7fb; }
+        .block-container { padding-top: 1.0rem; padding-bottom: 2rem; }
+
+        .header-pill{
+        background: #214a6b; color: white;
+        padding: 12px 18px; border-radius: 10px;
+        font-weight: 800; display: inline-block;
+        box-shadow: 0 6px 14px rgba(0,0,0,.12);
+        }
+        .filter-pill{
+        background: #214a6b; color: white;
+        padding: 8px 12px; border-radius: 10px;
+        font-weight: 700; display: inline-block;
+        }
+        .kpi{
+        background: #214a6b; color: white;
+        border-radius: 14px;
+        padding: 14px 16px;
+        height: 82px;
+        box-shadow: 0 10px 24px rgba(16,24,40,.10);
+        display: flex; flex-direction: column;
+        justify-content: center;
+        }
+        .kpi .label{ opacity: .85; font-size: 12px; line-height: 14px; }
+        .kpi .value{ font-size: 22px; font-weight: 900; margin-top: 4px; }
+
+        .card{
+        background: white;
+        border-radius: 16px;
+        padding: 16px 16px;
+        box-shadow: 0 10px 24px rgba(16,24,40,.08);
+        border: 1px solid rgba(16,24,40,.06);
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        MESES_ORD = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
+        orden_mes = {m: i for i, m in enumerate(MESES_ORD)}
+
+        def norm_mes(x):
+            s = str(x).strip().lower()
+            if s and not s.endswith("."):
+                s += "."
+            return s
+
+        def money(x):
+            try:
+                return f"$ {float(x):,.0f}"
+            except:
+                return "$ 0"
+
+        def _norm_code_list(lst):
+            if lst is None:
+                return []
+            out = []
+            for x in lst:
+                s = str(x).strip()
+                if s.endswith(".0"):
+                    s = s[:-2]
+                if s:
+                    out.append(s)
+            return out
+
+        def _coalesce_cols(df, candidates):
+            for c in candidates:
+                if c in df.columns:
+                    return c
+            return None
+
+        def _sum_where(df, cond, col_monto):
+            if df.empty:
+                return 0.0
+            return float(pd.to_numeric(df.loc[cond, col_monto], errors="coerce").fillna(0).sum())
+
+        def _safe_div(a, b):
+            return (a / b) if b else 0.0
+
+        st.markdown('<div class="header-pill">Dashboard de Calidad y Control : Presupuesto versus Gastado</div>', unsafe_allow_html=True)
+        st.write("")
+
+        f1, f2, f3 = st.columns([1.2, 1.4, 1.0])
+
+        with f1:
+            st.markdown('<span class="filter-pill">MES</span>', unsafe_allow_html=True)
+            meses_input = st.multiselect(
+                " ",
+                options=MESES_ORD,
+                default=["ene."],
+                key="meses_dashboard_dep"
+            )
+            meses_sel = sorted([norm_mes(m) for m in meses_input], key=lambda x: orden_mes.get(x, 999))
+
+        with f2:
+            st.markdown('<span class="filter-pill">CECO</span>', unsafe_allow_html=True)
+            ceco_codigo, ceco_nombre = filtro_ceco(f2)
+
+        with f3:
+            modo = st.radio(
+                " ",
+                options=["Mes", "Acumulado"],
+                horizontal=True,
+                index=0,
+                key="modo_mes_acum_dep"
+            )
+
+        if not meses_sel:
+            st.error("Selecciona por lo menos un mes.")
+            st.stop()
+
+        cecos_sel = _norm_code_list(ceco_codigo)
+
+        col_mes_ppt  = _coalesce_cols(df_ppt,  ["Mes_A"])
+        col_mes_real = _coalesce_cols(df_real, ["Mes_A"])
+
+        col_ceco_ppt  = _coalesce_cols(df_ppt,  ["CeCo_A", "CECO_A"])
+        col_ceco_real = _coalesce_cols(df_real, ["CeCo_A", "CECO_A"])
+
+        col_monto_ppt  = _coalesce_cols(df_ppt,  ["Neto_A"])
+        col_monto_real = _coalesce_cols(df_real, ["Neto_A"])
+
+        col_clas_ppt  = _coalesce_cols(df_ppt,  ["Clasificacion_A"])
+        col_clas_real = _coalesce_cols(df_real, ["Clasificacion_A"])
+
+        col_cat_ppt  = _coalesce_cols(df_ppt,  ["Categoria_A"])
+        col_cat_real = _coalesce_cols(df_real, ["Categoria_A"])
+
+        col_cta_real = _coalesce_cols(df_real, ["Cuenta_A", "Cuenta", "CuentaContable", "CuentaContable_A"])
+
+        missing = [x for x in [
+            col_mes_ppt, col_ceco_ppt, col_monto_ppt, col_clas_ppt, col_cat_ppt,
+            col_mes_real, col_ceco_real, col_monto_real, col_clas_real, col_cat_real,
+            col_cta_real
+        ] if x is None]
+        if missing:
+            st.error("No encontré columnas necesarias (Mes/CeCo/Neto/Clasificacion/Categoria/Cuenta) en df_ppt/df_real.")
+            st.stop()
+        meses_usar = [meses_sel[-1]] if modo == "Mes" else meses_sel
+        mes_unico = meses_usar[-1]
+
+        dfp = df_ppt.copy()
+        dfr = df_real.copy()
+
+        dfp[col_mes_ppt] = dfp[col_mes_ppt].apply(norm_mes)
+        dfr[col_mes_real] = dfr[col_mes_real].apply(norm_mes)
+
+        dfp[col_ceco_ppt] = dfp[col_ceco_ppt].astype(str).str.strip().str.replace(".0", "", regex=False)
+        dfr[col_ceco_real] = dfr[col_ceco_real].astype(str).str.strip().str.replace(".0", "", regex=False)
+
+        dfp_f = dfp[dfp[col_mes_ppt].isin(meses_usar)].copy()
+        dfr_f = dfr[dfr[col_mes_real].isin(meses_usar)].copy()
+
+        if cecos_sel:
+            dfp_f = dfp_f[dfp_f[col_ceco_ppt].isin(cecos_sel)].copy()
+            dfr_f = dfr_f[dfr_f[col_ceco_real].isin(cecos_sel)].copy()
+        ingreso_ppt  = _sum_where(dfp_f, (dfp_f[col_cat_ppt] == "INGRESO"), col_monto_ppt)
+        ingreso_real = _sum_where(dfr_f, (dfr_f[col_cat_real] == "INGRESO"), col_monto_real)
+
+        gadmn_ppt  = _sum_where(dfp_f, (dfp_f[col_clas_ppt] == "G.ADMN"), col_monto_ppt)
+        gadmn_real = _sum_where(dfr_f, (dfr_f[col_clas_real] == "G.ADMN"), col_monto_real)
+
+        coss_ppt  = _sum_where(dfp_f, (dfp_f[col_clas_ppt] == "COSS"), col_monto_ppt)
+        coss_real = _sum_where(dfr_f, (dfr_f[col_clas_real] == "COSS"), col_monto_real)
+
+        total_ppt  = coss_ppt + gadmn_ppt
+        total_real = coss_real + gadmn_real
+
+        total_ppt_ajustado = (_safe_div(total_ppt, ingreso_ppt) * ingreso_real) if ingreso_ppt else total_ppt
+        ingreso_proyectado = float(st.session_state.get("PROY_ingreso_pro_fut", 0.0))
+        mes_proy_activo = st.session_state.get("PROY_mes_act", None)
+        mes_proy_activo = norm_mes(mes_proy_activo) if mes_proy_activo else None
+
+        # Opción A: solo aparece si el mes seleccionado coincide con PROY_mes_act
+        mostrar_recomendado = (modo == "Mes") and (mes_proy_activo is not None) and (norm_mes(mes_unico) == mes_proy_activo)
+        recomendado_m = (_safe_div(total_ppt, ingreso_ppt) * ingreso_proyectado) if (ingreso_ppt and mostrar_recomendado) else 0.0
+        pct_ejecutado = (total_real / total_ppt * 100) if total_ppt else 0.0
+        dif_real_vs_ppt = total_real - total_ppt
+        dif_s_ingresos = total_real - (_safe_div(total_ppt, ingreso_ppt) * ingreso_real) if ingreso_ppt else total_real
+
+        st.write("")
+        k1, k2, k3, k4 = st.columns(4)
+
+        with k1:
+            st.markdown(f"""
+            <div class="kpi">
+            <div class="label">TOTAL PRESUPUESTADO (COSS PPT + G.ADMN PPT)</div>
+            <div class="value">{money(total_ppt)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with k2:
+            st.markdown(f"""
+            <div class="kpi">
+            <div class="label">TOTAL GASTADO (COSS REAL + G.ADMN REAL)</div>
+            <div class="value">{money(total_real)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with k3:
+            st.markdown(f"""
+            <div class="kpi">
+            <div class="label">TOTAL PPT AJUSTADO ((PPT/Ing.PPT)*Ing.Real)</div>
+            <div class="value">{money(total_ppt_ajustado)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with k4:
+            if mostrar_recomendado:
+                st.markdown(f"""
+                <div class="kpi">
+                <div class="label">RECOMENDADO M. ((PPT/Ing.PPT)*Ing.Proy)</div>
+                <div class="value">{money(recomendado_m)}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="kpi">
+                <div class="label">RECOMENDADO M.</div>
+                <div class="value">—</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.write("")
+        c_pie, c_difs = st.columns([1.35, 0.65])
+
+        with c_pie:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+
+            pie_df = pd.DataFrame({
+                "Estado": ["Ejecutado", "Restante"],
+                "Valor": [max(pct_ejecutado, 0), max(100 - pct_ejecutado, 0)]
+            })
+
+            fig = px.pie(pie_df, names="Estado", values="Valor", hole=0.72)
+            fig.update_traces(textinfo="none")
+            fig.update_layout(
+                title=f"Porcentaje del presupuesto ejecutado (COSS+G.ADMN) - {modo}",
+                height=330,
+                margin=dict(l=10, r=10, t=60, b=10),
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown(
+                f"<div style='text-align:center; margin-top:-195px; font-size:34px; font-weight:900;'>{pct_ejecutado:.0f}%</div>",
+                unsafe_allow_html=True
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with c_difs:
+            st.markdown(f"""
+            <div class="kpi">
+            <div class="label">DIF. Real vs PPT</div>
+            <div class="value">{money(dif_real_vs_ppt)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.write("")
+            st.markdown(f"""
+            <div class="kpi">
+            <div class="label">DIF. S/Ingresos (Real - s/ingresos)</div>
+            <div class="value">{money(dif_s_ingresos)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        st.write("")
+        d1, d2 = st.columns(2)
+
+        with d1:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            df_coss_cat = dfp_f[dfp_f[col_clas_ppt] == "COSS"].copy()
+            df_coss_cat[col_cat_ppt] = df_coss_cat[col_cat_ppt].astype(str).str.strip()
+            df_coss_cat["Monto"] = pd.to_numeric(df_coss_cat[col_monto_ppt], errors="coerce").fillna(0)
+
+            grp = df_coss_cat.groupby(col_cat_ppt, as_index=False)["Monto"].sum()
+            grp = grp[grp["Monto"] != 0].copy()
+
+            if grp.empty:
+                st.info("No hay datos para participación por categoría (COSS).")
+            else:
+                fig_coss = px.pie(grp, names=col_cat_ppt, values="Monto", hole=0.62)
+                fig_coss.update_layout(
+                    title="Participación del presupuesto por categoría (COSS) - PPT",
+                    height=320, margin=dict(l=10, r=10, t=60, b=10)
+                )
+                st.plotly_chart(fig_coss, use_container_width=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with d2:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            df_gadm_cat = dfp_f[dfp_f[col_clas_ppt] == "G.ADMN"].copy()
+            df_gadm_cat[col_cat_ppt] = df_gadm_cat[col_cat_ppt].astype(str).str.strip()
+            df_gadm_cat["Monto"] = pd.to_numeric(df_gadm_cat[col_monto_ppt], errors="coerce").fillna(0)
+
+            grp2 = df_gadm_cat.groupby(col_cat_ppt, as_index=False)["Monto"].sum()
+            grp2 = grp2[grp2["Monto"] != 0].copy()
+
+            if grp2.empty:
+                st.info("No hay datos para participación por categoría (G.ADMN).")
+            else:
+                fig_gadm = px.pie(grp2, names=col_cat_ppt, values="Monto", hole=0.62)
+                fig_gadm.update_layout(
+                    title="Participación del presupuesto por categoría (G.ADMN) - PPT",
+                    height=320, margin=dict(l=10, r=10, t=60, b=10)
+                )
+                st.plotly_chart(fig_gadm, use_container_width=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+        st.write("")
+        t1, t2 = st.columns(2)
+
+        def top10_cuentas_por_ceco(df_real_filtrado, clasificacion_obj):
+            d = df_real_filtrado[df_real_filtrado[col_clas_real] == clasificacion_obj].copy()
+            if d.empty:
+                return pd.DataFrame(columns=[col_ceco_real, col_cta_real, "Monto"])
+            d[col_cta_real] = d[col_cta_real].astype(str).str.strip()
+            d["Monto"] = pd.to_numeric(d[col_monto_real], errors="coerce").fillna(0)
+
+            g = (
+                d.groupby([col_ceco_real, col_cta_real], as_index=False)["Monto"]
+                .sum()
+                .sort_values("Monto", ascending=False)
+                .head(10)
+            )
+            return g
+
+        with t1:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            top_coss = top10_cuentas_por_ceco(dfr_f, "COSS")
+            if top_coss.empty:
+                st.info("No hay datos REAL para TOP 10 cuentas (COSS).")
+            else:
+                top_coss["Etiqueta"] = top_coss[col_ceco_real].astype(str) + " - " + top_coss[col_cta_real].astype(str)
+                fig_top_coss = px.bar(top_coss.sort_values("Monto", ascending=True), x="Monto", y="Etiqueta")
+                fig_top_coss.update_layout(
+                    title="TOP 10 Cuentas más altas por CeCo (COSS) - REAL",
+                    height=360, margin=dict(l=10, r=10, t=60, b=10)
+                )
+                st.plotly_chart(fig_top_coss, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with t2:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            top_gadm = top10_cuentas_por_ceco(dfr_f, "G.ADMN")
+            if top_gadm.empty:
+                st.info("No hay datos REAL para TOP 10 cuentas (G.ADMN).")
+            else:
+                top_gadm["Etiqueta"] = top_gadm[col_ceco_real].astype(str) + " - " + top_gadm[col_cta_real].astype(str)
+                fig_top_gadm = px.bar(top_gadm.sort_values("Monto", ascending=True), x="Monto", y="Etiqueta")
+                fig_top_gadm.update_layout(
+                    title="TOP 10 Cuentas más altas por CeCo (G.ADMN) - REAL",
+                    height=360, margin=dict(l=10, r=10, t=60, b=10)
+                )
+                st.plotly_chart(fig_top_gadm, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    elif selected == "Vista Proy.":
+        st.markdown("""
+        <style>
+        .stApp { background: #f5f7fb; }
+        .block-container { padding-top: 1.0rem; padding-bottom: 2rem; }
+
+        .header-pill{
+        background: #214a6b; color: white;
+        padding: 12px 18px; border-radius: 10px;
+        font-weight: 800; display: inline-block;
+        box-shadow: 0 6px 14px rgba(0,0,0,.12);
+        }
+        .filter-pill{
+        background: #214a6b; color: white;
+        padding: 8px 12px; border-radius: 10px;
+        font-weight: 700; display: inline-block;
+        }
+        .kpi{
+        background: #214a6b; color: white;
+        border-radius: 14px;
+        padding: 14px 16px;
+        height: 82px;
+        box-shadow: 0 10px 24px rgba(16,24,40,.10);
+        display: flex; flex-direction: column;
+        justify-content: center;
+        }
+        .kpi .label{ opacity: .85; font-size: 12px; line-height: 14px; }
+        .kpi .value{ font-size: 22px; font-weight: 900; margin-top: 4px; }
+
+        .card{
+        background: white;
+        border-radius: 16px;
+        padding: 16px 16px;
+        box-shadow: 0 10px 24px rgba(16,24,40,.08);
+        border: 1px solid rgba(16,24,40,.06);
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # =========================
+        # HELPERS
+        # =========================
+        MESES_ORD = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
+        orden_mes = {m: i for i, m in enumerate(MESES_ORD)}
+
+        def norm_mes(x):
+            s = str(x).strip().lower()
+            if s and not s.endswith("."):
+                s += "."
+            return s
+
+        def money(x):
+            try:
+                return f"$ {float(x):,.0f}"
+            except:
+                return "$ 0"
+
+        def _norm_list(lst):
+            if lst is None:
+                return []
+            out = []
+            for x in lst:
+                s = str(x).strip()
+                if s.endswith(".0"):
+                    s = s[:-2]
+                if s:
+                    out.append(s)
+            return out
+
+        def _coalesce_cols(df, candidates):
+            for c in candidates:
+                if c in df.columns:
+                    return c
+            return None
+
+        def _sum_where(df, cond, col_monto):
+            if df.empty:
+                return 0.0
+            return float(pd.to_numeric(df.loc[cond, col_monto], errors="coerce").fillna(0).sum())
+
+        def _safe_div(a, b):
+            return (a / b) if b else 0.0
+
+        # =========================
+        # HEADER + FILTROS
+        # =========================
+        st.markdown('<div class="header-pill">Dashboard por Proyecto : Presupuesto versus Gastado</div>', unsafe_allow_html=True)
+        st.write("")
+
+        f1, f2, f3 = st.columns([1.2, 1.6, 1.0])
+
+        with f1:
+            st.markdown('<span class="filter-pill">MES</span>', unsafe_allow_html=True)
+            meses_input = st.multiselect(
+                " ",
+                options=MESES_ORD,
+                default=["ene."],
+                key="meses_dashboard_proy"
+            )
+            meses_sel = sorted([norm_mes(m) for m in meses_input], key=lambda x: orden_mes.get(x, 999))
+
+        with f2:
+            st.markdown('<span class="filter-pill">PROYECTO</span>', unsafe_allow_html=True)
+            proyecto_codigo, proyecto_nombre = None, None
+            # tu filtro_pro regresa (codigo, nombre)
+            proyecto_codigo, proyecto_nombre = filtro_pro(f2)
+
+            # por si te lo regresa como (codigo, nombre, algo) o lista:
+            if isinstance(proyecto_codigo, tuple) or isinstance(proyecto_codigo, list):
+                pass
+
+        with f3:
+            modo = st.radio(
+                " ",
+                options=["Mes", "Acumulado"],
+                horizontal=True,
+                index=0,
+                key="modo_mes_acum_proy"
+            )
+
+        if not meses_sel:
+            st.error("Selecciona por lo menos un mes.")
+            st.stop()
+
+        proys_sel = _norm_list(proyecto_codigo)
+
+        col_mes_ppt  = _coalesce_cols(df_ppt,  ["Mes_A"])
+        col_mes_real = _coalesce_cols(df_real, ["Mes_A"])
+
+        col_proy_ppt  = _coalesce_cols(df_ppt,  ["Proyecto_A"])
+        col_proy_real = _coalesce_cols(df_real, ["Proyecto_A"])
+
+        col_monto_ppt  = _coalesce_cols(df_ppt,  ["Neto_A"])
+        col_monto_real = _coalesce_cols(df_real, ["Neto_A"])
+
+        col_clas_ppt  = _coalesce_cols(df_ppt,  ["Clasificacion_A"])
+        col_clas_real = _coalesce_cols(df_real, ["Clasificacion_A"])
+
+        col_cat_ppt  = _coalesce_cols(df_ppt,  ["Categoria_A"])
+        col_cat_real = _coalesce_cols(df_real, ["Categoria_A"])
+
+        col_cta_real = _coalesce_cols(df_real, ["Cuenta_A", "Cuenta", "CuentaContable", "CuentaContable_A"])
+
+        missing = [x for x in [
+            col_mes_ppt, col_proy_ppt, col_monto_ppt, col_clas_ppt, col_cat_ppt,
+            col_mes_real, col_proy_real, col_monto_real, col_clas_real, col_cat_real,
+            col_cta_real
+        ] if x is None]
+        if missing:
+            st.error("No encontré columnas necesarias (Mes/Proyecto/Neto/Clasificacion/Categoria/Cuenta) en df_ppt/df_real.")
+            st.stop()
+
+        meses_usar = [meses_sel[-1]] if modo == "Mes" else meses_sel
+        mes_unico = meses_usar[-1]
+
+        dfp = df_ppt.copy()
+        dfr = df_real.copy()
+
+        dfp[col_mes_ppt] = dfp[col_mes_ppt].apply(norm_mes)
+        dfr[col_mes_real] = dfr[col_mes_real].apply(norm_mes)
+
+        dfp[col_proy_ppt] = dfp[col_proy_ppt].astype(str).str.strip().str.replace(".0", "", regex=False)
+        dfr[col_proy_real] = dfr[col_proy_real].astype(str).str.strip().str.replace(".0", "", regex=False)
+
+        dfp_f = dfp[dfp[col_mes_ppt].isin(meses_usar)].copy()
+        dfr_f = dfr[dfr[col_mes_real].isin(meses_usar)].copy()
+
+        if proys_sel:
+            dfp_f = dfp_f[dfp_f[col_proy_ppt].isin(proys_sel)].copy()
+            dfr_f = dfr_f[dfr_f[col_proy_real].isin(proys_sel)].copy()
+
+        ingreso_ppt  = _sum_where(dfp_f, (dfp_f[col_cat_ppt] == "INGRESO"), col_monto_ppt)
+        ingreso_real = _sum_where(dfr_f, (dfr_f[col_cat_real] == "INGRESO"), col_monto_real)
+
+        gadmn_ppt  = _sum_where(dfp_f, (dfp_f[col_clas_ppt] == "G.ADMN"), col_monto_ppt)
+        gadmn_real = _sum_where(dfr_f, (dfr_f[col_clas_real] == "G.ADMN"), col_monto_real)
+
+        coss_ppt  = _sum_where(dfp_f, (dfp_f[col_clas_ppt] == "COSS"), col_monto_ppt)
+        coss_real = _sum_where(dfr_f, (dfr_f[col_clas_real] == "COSS"), col_monto_real)
+
+        total_ppt  = coss_ppt + gadmn_ppt
+        total_real = coss_real + gadmn_real
+
+        total_ppt_ajustado = (_safe_div(total_ppt, ingreso_ppt) * ingreso_real) if ingreso_ppt else total_ppt
+
+        ingreso_proyectado = float(st.session_state.get("PROY_ingreso_pro_fut", 0.0))
+        mes_proy_activo = st.session_state.get("PROY_mes_act", None)
+        mes_proy_activo = norm_mes(mes_proy_activo) if mes_proy_activo else None
+        mostrar_recomendado = (modo == "Mes") and (mes_proy_activo is not None) and (norm_mes(mes_unico) == mes_proy_activo)
+        recomendado_m = (_safe_div(total_ppt, ingreso_ppt) * ingreso_proyectado) if (ingreso_ppt and mostrar_recomendado) else 0.0
+        pct_ejecutado = (total_real / total_ppt * 100) if total_ppt else 0.0
+        dif_real_vs_ppt = total_real - total_ppt
+        dif_s_ingresos = total_real - (_safe_div(total_ppt, ingreso_ppt) * ingreso_real) if ingreso_ppt else total_real
+
+        st.write("")
+        k1, k2, k3, k4 = st.columns(4)
+
+        with k1:
+            st.markdown(f"""
+            <div class="kpi">
+            <div class="label">TOTAL PRESUPUESTADO (COSS PPT + G.ADMN PPT)</div>
+            <div class="value">{money(total_ppt)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with k2:
+            st.markdown(f"""
+            <div class="kpi">
+            <div class="label">TOTAL GASTADO (COSS REAL + G.ADMN REAL)</div>
+            <div class="value">{money(total_real)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with k3:
+            st.markdown(f"""
+            <div class="kpi">
+            <div class="label">TOTAL PPT AJUSTADO ((PPT/Ing.PPT)*Ing.Real)</div>
+            <div class="value">{money(total_ppt_ajustado)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with k4:
+            if mostrar_recomendado:
+                st.markdown(f"""
+                <div class="kpi">
+                <div class="label">RECOMENDADO M. ((PPT/Ing.PPT)*Ing.Proy)</div>
+                <div class="value">{money(recomendado_m)}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="kpi">
+                <div class="label">RECOMENDADO M.</div>
+                <div class="value">—</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.write("")
+        c_pie, c_difs = st.columns([1.35, 0.65])
+
+        with c_pie:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+
+            pie_df = pd.DataFrame({
+                "Estado": ["Ejecutado", "Restante"],
+                "Valor": [max(pct_ejecutado, 0), max(100 - pct_ejecutado, 0)]
+            })
+
+            fig = px.pie(pie_df, names="Estado", values="Valor", hole=0.72)
+            fig.update_traces(textinfo="none")
+            fig.update_layout(
+                title=f"Porcentaje del presupuesto ejecutado (COSS+G.ADMN) - {modo}",
+                height=330,
+                margin=dict(l=10, r=10, t=60, b=10),
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown(
+                f"<div style='text-align:center; margin-top:-195px; font-size:34px; font-weight:900;'>{pct_ejecutado:.0f}%</div>",
+                unsafe_allow_html=True
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with c_difs:
+            st.markdown(f"""
+            <div class="kpi">
+            <div class="label">DIF. Real vs PPT</div>
+            <div class="value">{money(dif_real_vs_ppt)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.write("")
+            st.markdown(f"""
+            <div class="kpi">
+            <div class="label">DIF. S/Ingresos (Real - s/ingresos)</div>
+            <div class="value">{money(dif_s_ingresos)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.write("")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+
+        if ingreso_ppt == 0 and ingreso_real == 0:
+            st.info("No hay datos de ingreso para este proyecto en el rango seleccionado.")
+        else:
+            df_ing_bar = pd.DataFrame({
+                "Tipo": ["Ingreso Presupuestado", "Ingreso Real"],
+                "Monto": [ingreso_ppt, ingreso_real]
+            })
+            fig_ing = px.bar(df_ing_bar, x="Tipo", y="Monto")
+            fig_ing.update_layout(
+                title=f"Ingreso del proyecto ({modo}) vs Ingreso Presupuestado",
+                height=320, margin=dict(l=10, r=10, t=60, b=10),
+                showlegend=False
+            )
+            st.plotly_chart(fig_ing, use_container_width=True)
+
+            pct_ing = (ingreso_real / ingreso_ppt * 100) if ingreso_ppt else 0
+            st.markdown(
+                f"<div style='font-weight:800; margin-top:6px;'>Avance ingreso: {pct_ing:.0f}% (Real / PPT)</div>",
+                unsafe_allow_html=True
+            )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.write("")
+        d1, d2 = st.columns(2)
+
+        with d1:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            df_coss_cat = dfp_f[dfp_f[col_clas_ppt] == "COSS"].copy()
+            df_coss_cat[col_cat_ppt] = df_coss_cat[col_cat_ppt].astype(str).str.strip()
+            df_coss_cat["Monto"] = pd.to_numeric(df_coss_cat[col_monto_ppt], errors="coerce").fillna(0)
+
+            grp = df_coss_cat.groupby(col_cat_ppt, as_index=False)["Monto"].sum()
+            grp = grp[grp["Monto"] != 0].copy()
+
+            if grp.empty:
+                st.info("No hay datos para participación por categoría (COSS).")
+            else:
+                fig_coss = px.pie(grp, names=col_cat_ppt, values="Monto", hole=0.62)
+                fig_coss.update_layout(
+                    title="Participación del presupuesto por categoría (COSS) - PPT",
+                    height=320, margin=dict(l=10, r=10, t=60, b=10)
+                )
+                st.plotly_chart(fig_coss, use_container_width=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with d2:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            df_gadm_cat = dfp_f[dfp_f[col_clas_ppt] == "G.ADMN"].copy()
+            df_gadm_cat[col_cat_ppt] = df_gadm_cat[col_cat_ppt].astype(str).str.strip()
+            df_gadm_cat["Monto"] = pd.to_numeric(df_gadm_cat[col_monto_ppt], errors="coerce").fillna(0)
+
+            grp2 = df_gadm_cat.groupby(col_cat_ppt, as_index=False)["Monto"].sum()
+            grp2 = grp2[grp2["Monto"] != 0].copy()
+
+            if grp2.empty:
+                st.info("No hay datos para participación por categoría (G.ADMN).")
+            else:
+                fig_gadm = px.pie(grp2, names=col_cat_ppt, values="Monto", hole=0.62)
+                fig_gadm.update_layout(
+                    title="Participación del presupuesto por categoría (G.ADMN) - PPT",
+                    height=320, margin=dict(l=10, r=10, t=60, b=10)
+                )
+                st.plotly_chart(fig_gadm, use_container_width=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        st.write("")
+        t1, t2 = st.columns(2)
+
+        def top10_cuentas(df_real_filtrado, clasificacion_obj):
+            d = df_real_filtrado[df_real_filtrado[col_clas_real] == clasificacion_obj].copy()
+            if d.empty:
+                return pd.DataFrame(columns=[col_cta_real, "Monto"])
+            d[col_cta_real] = d[col_cta_real].astype(str).str.strip()
+            d["Monto"] = pd.to_numeric(d[col_monto_real], errors="coerce").fillna(0)
+
+            g = (
+                d.groupby([col_cta_real], as_index=False)["Monto"]
+                .sum()
+                .sort_values("Monto", ascending=False)
+                .head(10)
+            )
+            return g
+
+        with t1:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            top_coss = top10_cuentas(dfr_f, "COSS")
+            if top_coss.empty:
+                st.info("No hay datos REAL para TOP 10 cuentas (COSS).")
+            else:
+                fig_top_coss = px.bar(top_coss.sort_values("Monto", ascending=True), x="Monto", y=col_cta_real)
+                fig_top_coss.update_layout(
+                    title="TOP 10 Cuentas más altas (COSS) - REAL",
+                    height=360, margin=dict(l=10, r=10, t=60, b=10)
+                )
+                st.plotly_chart(fig_top_coss, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with t2:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            top_gadm = top10_cuentas(dfr_f, "G.ADMN")
+            if top_gadm.empty:
+                st.info("No hay datos REAL para TOP 10 cuentas (G.ADMN).")
+            else:
+                fig_top_gadm = px.bar(top_gadm.sort_values("Monto", ascending=True), x="Monto", y=col_cta_real)
+                fig_top_gadm.update_layout(
+                    title="TOP 10 Cuentas más altas (G.ADMN) - REAL",
+                    height=360, margin=dict(l=10, r=10, t=60, b=10)
+                )
+                st.plotly_chart(fig_top_gadm, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     elif selected == "Variaciones":
         col1, col2, col3 = st.columns(3)
@@ -5560,6 +6317,7 @@ else:
                 else:
                     st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
                     
+
 
 
 
