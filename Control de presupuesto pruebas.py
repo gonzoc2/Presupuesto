@@ -1605,7 +1605,7 @@ else:
             font-weight: 900 !important;
         }
 
-        /* Delta base (burbuja) */
+        /* Delta base (burbuja) - se queda gris SIEMPRE (ya no intentamos JS) */
         div[data-testid="stMetricDelta"]{
             color: #ffffff !important;
             font-weight: 900 !important;
@@ -1614,58 +1614,64 @@ else:
             display: inline-block !important;
             margin-top: 6px !important;
             border: 1px solid rgba(255,255,255,.25) !important;
-            background: #6b7280 !important; /* gris default (JS la cambia) */
+            background: #6b7280 !important;
         }
         div[data-testid="stMetricDelta"] *{
             color: #ffffff !important;
             opacity: 1 !important;
             font-weight: 900 !important;
         }
+
+        /* ====== KPI CUSTOM (para lograr rojo/verde real) ====== */
+        .kpi-card{
+            background:#214a6b;
+            border-radius:14px;
+            padding:14px 16px;
+            height:82px;
+            position:relative;
+            box-shadow:0 10px 24px rgba(16,24,40,.10);
+            overflow:visible;
+        }
+        .kpi-label{
+            color:#ffffff;
+            font-size:12px;
+            font-weight:800;
+            line-height:14px;
+            margin:0 0 6px 0;
+        }
+        .kpi-value{
+            color:#ffffff;
+            font-size:22px;
+            font-weight:900;
+            line-height:1.05;
+            margin:0;
+        }
+        .kpi-delta{
+            position:absolute;
+            left:12px;
+            bottom:-18px;          /* cuelga como burbuja */
+            padding:6px 10px;
+            border-radius:999px;
+            color:#fff;
+            font-weight:900;
+            font-size:12px;
+            border:1px solid rgba(255,255,255,.25);
+            box-shadow:0 8px 16px rgba(16,24,40,.20);
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            white-space:nowrap;
+        }
+        .kpi-delta .arr{
+            font-size:13px;
+            line-height:1;
+        }
         </style>
         """, unsafe_allow_html=True)
 
-        # ✅ JS: pinta rojo/verde según el texto del delta (+ / -)
-        components.html(
-            """
-            <script>
-            (function() {
-            const POS_BG = "#1f7a3a"; // verde
-            const NEG_BG = "#b42318"; // rojo
-            const NEU_BG = "#6b7280"; // gris
-
-            function paint() {
-                const deltas = parent.document.querySelectorAll('div[data-testid="stMetricDelta"]');
-                deltas.forEach(d => {
-                const t = (d.innerText || "").trim();
-
-                // Detecta signo (sirve para % y pp)
-                const isNeg = t.includes("-") || t.includes("↓");
-                const isPos = t.includes("+") || t.includes("↑");
-
-                if (isNeg) d.style.background = NEG_BG;
-                else if (isPos) d.style.background = POS_BG;
-                else d.style.background = NEU_BG;
-
-                d.style.color = "#ffffff";
-                d.style.opacity = "1";
-                });
-            }
-
-            // Corre varias veces por el render async de Streamlit
-            paint();
-            setTimeout(paint, 200);
-            setTimeout(paint, 600);
-            setTimeout(paint, 1200);
-
-            // Re-aplica si hay cambios en el DOM (filtros/refresh)
-            const obs = new MutationObserver(() => paint());
-            obs.observe(parent.document.body, { childList: true, subtree: true });
-            })();
-            </script>
-            """,
-            height=0,
-        )
-        
+        # =========================
+        # Helpers
+        # =========================
         def fmt_mxn(x):
             try:
                 return f"${float(x):,.0f}"
@@ -1687,6 +1693,56 @@ else:
             if ppt == 0:
                 return "0.0%"
             return f"{((real / ppt) - 1) * 100:+.1f}%"
+
+        # ✅ NUEVO: delta con color (rojo/verde) para las burbujas
+        def _delta_info_ratio(real, ppt):
+            try:
+                real = float(real or 0.0)
+                ppt  = float(ppt or 0.0)
+            except:
+                real, ppt = 0.0, 0.0
+
+            if ppt == 0:
+                d = 0.0
+            else:
+                d = (real / ppt) - 1
+
+            if d > 0:
+                return f"{d*100:+.1f}%", "#1f7a3a", "↑"
+            if d < 0:
+                return f"{d*100:+.1f}%", "#b42318", "↓"
+            return f"{d*100:+.1f}%", "#6b7280", "→"
+
+        def _delta_info_pp(real_pp, ppt_pp):
+            # real_pp y ppt_pp vienen en "proporción" (0.281) o ya en pp? aquí usamos proporción y convertimos a pp
+            try:
+                real_pp = float(real_pp or 0.0)
+                ppt_pp  = float(ppt_pp or 0.0)
+            except:
+                real_pp, ppt_pp = 0.0, 0.0
+
+            d_pp = (real_pp - ppt_pp) * 100.0  # pp
+            if d_pp > 0:
+                return f"{d_pp:+.1f} pp", "#1f7a3a", "↑"
+            if d_pp < 0:
+                return f"{d_pp:+.1f} pp", "#b42318", "↓"
+            return f"{d_pp:+.1f} pp", "#6b7280", "→"
+
+        def kpi_card(col, label, value_txt, delta_txt, delta_color, arrow):
+            col.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-label">{label}</div>
+                    <div class="kpi-value">{value_txt}</div>
+                    <div class="kpi-delta" style="background:{delta_color}">
+                        <span class="arr">{arrow}</span>
+                        <span>{delta_txt}</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
         def uo_objetivos_en_tablero(df_ppt, df_real, fecha_actualizacion, proyectos, list_pro, meses_sel):
             """
             Tabla + gráfica de % Utilidad Operativa por proyecto:
@@ -1943,17 +1999,23 @@ else:
             uo_ppt  = ing_ppt  - coss_total_ppt  - gadm_ppt
             uo_real = ing_real - coss_total_real - gadm_real
 
-            # ✅ KPIs con texto blanco (por CSS)
+            # ✅ KPIs: EXACTAMENTE igual en layout (5 columnas), pero burbuja ROJA/VERDE real
             k1, k2, k3, k4, k5 = st.columns(5)
-            k1.metric("Ingresos", fmt_mxn(ing_real), delta_pct(ing_real, ing_ppt))
-            k2.metric("COSS total", fmt_mxn(coss_total_real), delta_pct(coss_total_real, coss_total_ppt))
-            k3.metric("G. Adm", fmt_mxn(gadm_real), delta_pct(gadm_real, gadm_ppt))
-            k4.metric("Utilidad Operativa", fmt_mxn(uo_real), delta_pct(uo_real, uo_ppt))
-            k5.metric(
-                "% UO",
-                fmt_pct(uo_real / ing_real if ing_real else 0),
-                f"{((uo_real/ing_real if ing_real else 0) - (uo_ppt/ing_ppt if ing_ppt else 0)) * 100:+.1f} pp"
-            )
+
+            d1, col1, a1 = _delta_info_ratio(ing_real, ing_ppt)
+            d2, col2, a2 = _delta_info_ratio(coss_total_real, coss_total_ppt)
+            d3, col3, a3 = _delta_info_ratio(gadm_real, gadm_ppt)
+            d4, col4, a4 = _delta_info_ratio(uo_real, uo_ppt)
+
+            uo_real_pct = (uo_real / ing_real) if ing_real else 0.0
+            uo_ppt_pct  = (uo_ppt  / ing_ppt)  if ing_ppt  else 0.0
+            d5, col5, a5 = _delta_info_pp(uo_real_pct, uo_ppt_pct)
+
+            kpi_card(k1, "Ingresos", fmt_mxn(ing_real), d1, col1, a1)
+            kpi_card(k2, "COSS total", fmt_mxn(coss_total_real), d2, col2, a2)
+            kpi_card(k3, "G. Adm", fmt_mxn(gadm_real), d3, col3, a3)
+            kpi_card(k4, "Utilidad Operativa", fmt_mxn(uo_real), d4, col4, a4)
+            kpi_card(k5, "% UO", fmt_pct(uo_real_pct), d5, col5, a5)
 
             st.divider()
 
@@ -1965,15 +2027,20 @@ else:
             uo_pro = ing_pro - coss_total_pro - gadm_pro
 
             k1, k2, k3, k4, k5 = st.columns(5)
-            k1.metric("Ingresos proyectado", fmt_mxn(ing_pro), delta_pct(ing_pro, ing_ppt))
-            k2.metric("COSS total proyectado", fmt_mxn(coss_total_pro), delta_pct(coss_total_pro, coss_total_ppt))
-            k3.metric("G. Adm proyectado", fmt_mxn(gadm_pro), delta_pct(gadm_pro, gadm_ppt))
-            k4.metric("Utilidad Operativa proyectada", fmt_mxn(uo_pro), delta_pct(uo_pro, uo_ppt))
-            k5.metric(
-                "% UO proyectado",
-                fmt_pct(uo_pro / ing_pro if ing_pro else 0),
-                f"{((uo_pro/ing_pro if ing_pro else 0) - (uo_ppt/ing_ppt if ing_ppt else 0)) * 100:+.1f} pp"
-            )
+
+            d1, col1, a1 = _delta_info_ratio(ing_pro, ing_ppt)
+            d2, col2, a2 = _delta_info_ratio(coss_total_pro, coss_total_ppt)
+            d3, col3, a3 = _delta_info_ratio(gadm_pro, gadm_ppt)
+            d4, col4, a4 = _delta_info_ratio(uo_pro, uo_ppt)
+
+            uo_pro_pct = (uo_pro / ing_pro) if ing_pro else 0.0
+            d5, col5, a5 = _delta_info_pp(uo_pro_pct, uo_ppt_pct)
+
+            kpi_card(k1, "Ingresos proyectado", fmt_mxn(ing_pro), d1, col1, a1)
+            kpi_card(k2, "COSS total proyectado", fmt_mxn(coss_total_pro), d2, col2, a2)
+            kpi_card(k3, "G. Adm proyectado", fmt_mxn(gadm_pro), d3, col3, a3)
+            kpi_card(k4, "Utilidad Operativa proyectada", fmt_mxn(uo_pro), d4, col4, a4)
+            kpi_card(k5, "% UO proyectado", fmt_pct(uo_pro_pct), d5, col5, a5)
 
             st.divider()
 
@@ -2076,7 +2143,6 @@ else:
             )
 
             return df_res, meses_sel_ord
-
         def tabla_proyectos_proyectado(df_ppt, df_real, fecha_actualizacion, proyectos, list_pro):
             """
             PROYECTADO usando la misma lógica que uo_objetivos_en_tablero:
@@ -2387,6 +2453,7 @@ else:
             list_pro=list_pro,
             meses_sel=meses_sel
         )
+        
         
     elif selected == "Vista Dep.":
 
@@ -6297,6 +6364,7 @@ else:
             return out_show
 
         tabla_diferencias(df_ppt, df_base)
+
 
 
 
