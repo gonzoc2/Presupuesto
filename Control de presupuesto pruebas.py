@@ -1588,8 +1588,7 @@ else:
             border: 0 !important;
         }
 
-        /* ✅ FIX REAL: El label NO siempre vive en stMetricLabel.
-        Forzamos blanco a todo el texto del KPI, y luego re-aseguramos value/delta. */
+        /* Texto del KPI blanco (label + todo el contenido) */
         div[data-testid="stMetric"] p,
         div[data-testid="stMetric"] span,
         div[data-testid="stMetric"] small,
@@ -1598,7 +1597,7 @@ else:
             opacity: 1 !important;
         }
 
-        /* Valor en blanco (por si algo lo pisa) */
+        /* Valor en blanco reforzado */
         div[data-testid="stMetricValue"],
         div[data-testid="stMetricValue"] *{
             color: #ffffff !important;
@@ -1606,49 +1605,66 @@ else:
             font-weight: 900 !important;
         }
 
-        /* ====== DELTA: burbuja NO transparente ====== */
-        div[data-testid="stMetricDelta"],
+        /* Delta base (burbuja) */
+        div[data-testid="stMetricDelta"]{
+            color: #ffffff !important;
+            font-weight: 900 !important;
+            padding: 4px 10px !important;
+            border-radius: 999px !important;
+            display: inline-block !important;
+            margin-top: 6px !important;
+            border: 1px solid rgba(255,255,255,.25) !important;
+            background: #6b7280 !important; /* gris default (JS la cambia) */
+        }
         div[data-testid="stMetricDelta"] *{
             color: #ffffff !important;
             opacity: 1 !important;
             font-weight: 900 !important;
         }
-
-        /* Base sólida (si no detectamos signo, queda gris sólido) */
-        div[data-testid="stMetricDelta"]{
-            background: #6b7280 !important;   /* gris */
-            border: 1px solid rgba(255,255,255,.25) !important;
-        }
-
-        /* ✅ Si Streamlit sí pone clases, úsalo */
-        div[data-testid="stMetricDelta"].stMetricDeltaPositive{ background: #1f7a3a !important; }
-        div[data-testid="stMetricDelta"].stMetricDeltaNegative{ background: #b42318 !important; }
-
-        /* ✅ Fallback por flecha SVG (tu screenshot muestra flecha dentro del círculo) */
-        div[data-testid="stMetricDelta"] svg{
-            fill: #ffffff !important;
-        }
-
-        /* Si hay flecha abajo -> rojo */
-        div[data-testid="stMetricDelta"]:has(svg[aria-label*="down"]),
-        div[data-testid="stMetricDelta"]:has(svg[aria-label*="decrease"]),
-        div[data-testid="stMetricDelta"]:has(svg[data-testid*="down"]),
-        div[data-testid="stMetricDelta"]:has(svg[data-icon*="down"]){
-            background: #b42318 !important;
-        }
-
-        /* Si hay flecha arriba -> verde */
-        div[data-testid="stMetricDelta"]:has(svg[aria-label*="up"]),
-        div[data-testid="stMetricDelta"]:has(svg[aria-label*="increase"]),
-        div[data-testid="stMetricDelta"]:has(svg[data-testid*="up"]),
-        div[data-testid="stMetricDelta"]:has(svg[data-icon*="up"]){
-            background: #1f7a3a !important;
-        }
-
-        /* Quita espacios extras debajo de widgets */
-        div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stMetric"]) { margin-bottom: 0.35rem; }
         </style>
         """, unsafe_allow_html=True)
+
+        # ✅ JS: pinta rojo/verde según el texto del delta (+ / -)
+        components.html(
+            """
+            <script>
+            (function() {
+            const POS_BG = "#1f7a3a"; // verde
+            const NEG_BG = "#b42318"; // rojo
+            const NEU_BG = "#6b7280"; // gris
+
+            function paint() {
+                const deltas = parent.document.querySelectorAll('div[data-testid="stMetricDelta"]');
+                deltas.forEach(d => {
+                const t = (d.innerText || "").trim();
+
+                // Detecta signo (sirve para % y pp)
+                const isNeg = t.includes("-") || t.includes("↓");
+                const isPos = t.includes("+") || t.includes("↑");
+
+                if (isNeg) d.style.background = NEG_BG;
+                else if (isPos) d.style.background = POS_BG;
+                else d.style.background = NEU_BG;
+
+                d.style.color = "#ffffff";
+                d.style.opacity = "1";
+                });
+            }
+
+            // Corre varias veces por el render async de Streamlit
+            paint();
+            setTimeout(paint, 200);
+            setTimeout(paint, 600);
+            setTimeout(paint, 1200);
+
+            // Re-aplica si hay cambios en el DOM (filtros/refresh)
+            const obs = new MutationObserver(() => paint());
+            obs.observe(parent.document.body, { childList: true, subtree: true });
+            })();
+            </script>
+            """,
+            height=0,
+        )
         
         def fmt_mxn(x):
             try:
@@ -6281,6 +6297,7 @@ else:
             return out_show
 
         tabla_diferencias(df_ppt, df_base)
+
 
 
 
