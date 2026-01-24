@@ -1294,7 +1294,7 @@ else:
     if st.session_state["rol"] in ["admin"] and "ESGARI" in st.session_state["proyectos"]:
         selected = option_menu(
             menu_title=None,
-            options=["Tablero", "Vista Dep.","Vista Proy.","Ingresos", "Consulta", "Variaciones", "Proyectos", "Proyección", "Ajustado", "YTD", "Mensual","OH","Departamentos","Proyección OH", "Modificaciones", "Dashboard"],
+            options=["Tablero", "Vista Dep.","Vista Proy.","Ingresos", "Consulta", "Variaciones", "Proyectos", "Proyección", "Ajustado", "YTD", "Mensual","OH","Departamentos","Proyección OH", "Modificaciones"],
             icons=[
             "clipboard-data",
             "diagram-3-fill",
@@ -1311,7 +1311,6 @@ else:
             "diagram-3",
             "sliders",
             "tools",
-            "speedometer2",
         ],
             default_index=0,
             orientation="horizontal",
@@ -1319,8 +1318,8 @@ else:
     elif st.session_state["rol"] == "director" or st.session_state["rol"] == "admin":
         selected = option_menu(
         menu_title=None,
-        options=["Tablero", "Vista Dep.","Vista Proy.","Ingresos", "Consulta", "Variaciones", "Proyectos", "Proyección", "Ajustado", "YTD", "Mensual","OH","Departamentos","Proyección OH", "Modificaciones", "Dashboard"],
-        icons=["clipboard-data", "diagram-3-fill", "kanban-fill", "cash-coin", "search", "arrow-left-right", "kanban", "graph-up-arrow", "bar-chart-line","calendar-range", "calendar-month", "building", "diagram-3", "sliders", "tools", "speedometer2"],
+        options=["Tablero", "Vista Dep.","Vista Proy.","Ingresos", "Consulta", "Variaciones", "Proyectos", "Proyección", "Ajustado", "YTD", "Mensual","OH","Departamentos","Proyección OH", "Modificaciones"],
+        icons=["clipboard-data", "diagram-3-fill", "kanban-fill", "cash-coin", "search", "arrow-left-right", "kanban", "graph-up-arrow", "bar-chart-line","calendar-range", "calendar-month", "building", "diagram-3", "sliders", "tools"],
         default_index=0,
         orientation="horizontal",)
 
@@ -1553,6 +1552,83 @@ else:
 
     if selected == "Tablero":
 
+        st.markdown("""
+        <style>
+        .stApp { background: #f5f7fb; }
+        .block-container { padding-top: 1.0rem; padding-bottom: 2rem; }
+
+        /* Header tipo “pill” */
+        .header-pill{
+            background: #214a6b; color: white;
+            padding: 12px 18px; border-radius: 10px;
+            font-weight: 800; display: inline-block;
+            box-shadow: 0 6px 14px rgba(0,0,0,.12);
+            margin-bottom: 10px;
+        }
+
+        /* Píldoras para títulos pequeños */
+        .filter-pill{
+            background: #214a6b; color: white;
+            padding: 8px 12px; border-radius: 10px;
+            font-weight: 700; display: inline-block;
+            margin-bottom: 6px;
+        }
+
+        /* “Cards” blancas (para tablas/gráficas) */
+        .card{
+            background: white;
+            border-radius: 16px;
+            padding: 14px 14px;
+            box-shadow: 0 10px 24px rgba(16,24,40,.08);
+            border: 1px solid rgba(16,24,40,.06);
+        }
+
+        /* ---- METRICS (st.metric) estilo KPI azul como la foto ---- */
+        div[data-testid="stMetric"]{
+            background: #214a6b !important;
+            border-radius: 14px !important;
+            padding: 14px 16px !important;
+            height: 82px !important;
+            box-shadow: 0 10px 24px rgba(16,24,40,.10) !important;
+            border: 0 !important;
+        }
+        div[data-testid="stMetricLabel"] p{
+            color: rgba(255,255,255,.85) !important;
+            font-size: 12px !important;
+            line-height: 14px !important;
+            font-weight: 700 !important;
+        }
+        div[data-testid="stMetricValue"]{
+            color: #ffffff !important;
+            font-size: 22px !important;
+            font-weight: 900 !important;
+        }
+        div[data-testid="stMetricDelta"]{
+            color: rgba(255,255,255,.92) !important;
+            font-weight: 800 !important;
+        }
+
+        /* ---- Contenedores de plotly / dataframes como tarjetas ---- */
+        div[data-testid="stPlotlyChart"] > div{
+            background: white !important;
+            border-radius: 16px !important;
+            box-shadow: 0 10px 24px rgba(16,24,40,.08) !important;
+            border: 1px solid rgba(16,24,40,.06) !important;
+            padding: 10px 10px !important;
+        }
+        div[data-testid="stDataFrame"] > div{
+            background: white !important;
+            border-radius: 16px !important;
+            box-shadow: 0 10px 24px rgba(16,24,40,.08) !important;
+            border: 1px solid rgba(16,24,40,.06) !important;
+            overflow: hidden !important;
+        }
+
+        /* Títulos */
+        h1, h2, h3 { color: #0b2239; }
+        </style>
+        """, unsafe_allow_html=True)
+
         def fmt_mxn(x):
             try:
                 return f"${float(x):,.0f}"
@@ -1574,6 +1650,7 @@ else:
             if ppt == 0:
                 return "0.0%"
             return f"{((real / ppt) - 1) * 100:+.1f}%"
+
         def uo_objetivos_en_tablero(df_ppt, df_real, fecha_actualizacion, proyectos, list_pro, meses_sel):
             """
             Tabla + gráfica de % Utilidad Operativa por proyecto:
@@ -1599,7 +1676,7 @@ else:
             fecha_completa = pd.to_datetime(fecha_actualizacion["fecha"].iloc[0])
             idx_mes_act = int(fecha_completa.month - 1)
             mes_act = meses_ordenados[idx_mes_act]
-            mes_ant_lm = meses_ordenados[(idx_mes_act - 1) % 12]  
+            mes_ant_lm = meses_ordenados[(idx_mes_act - 1) % 12]
             proyectos_local = proyectos.copy()
             proyectos_local["proyectos"] = proyectos_local["proyectos"].astype(str).str.strip()
             proyectos_local["nombre"] = proyectos_local["nombre"].astype(str).str.strip()
@@ -1615,6 +1692,7 @@ else:
 
             nombres = df_visibles["nombre"].tolist()
             codigos = df_visibles["proyectos"].tolist()
+
             def _norm_proy_code(x):
                 return str(x).strip().replace(".0", "")
 
@@ -1622,6 +1700,7 @@ else:
                 if col in df.columns:
                     df[col] = df[col].astype(str).str.strip().str.replace(".0", "", regex=False)
                 return df
+
             def ingreso_proy_historico(df_base, fecha_actualizacion, mes_act, codigo_list, pro_nombre):
                 ingreso_sem = "https://docs.google.com/spreadsheets/d/14l6QLudSBpqxmfuwRqVxCXzhSFzRL0AqWJqVuIOaFFQ/export?format=xlsx"
                 df = cargar_datos(ingreso_sem)
@@ -1667,13 +1746,14 @@ else:
 
                 mask_ok = df_proyeccion["ingreso_dividido"].notna() & (df_proyeccion["ingreso_dividido"].abs() > 1e-9)
                 df_proyeccion.loc[mask_ok, "Neto_A"] = df_proyeccion.loc[mask_ok, "Neto_A"] / df_proyeccion.loc[mask_ok, "ingreso_dividido"]
-                df_proyeccion.loc[~mask_ok, "Neto_A"] = 0.0  # conservador si no hay ratio
+                df_proyeccion.loc[~mask_ok, "Neto_A"] = 0.0
 
                 if pro_nombre != "ESGARI":
                     cods = [str(x).strip() for x in codigo_list]
                     df_proyeccion = df_proyeccion[df_proyeccion["Proyecto_A"].astype(str).isin(cods)]
 
                 return float(df_proyeccion["Neto_A"].sum() or 0.0)
+
             def calc_pct_uo_proy(df_base, fecha_actualizacion, mes_act, mes_ant_lm, codigo_list, pro_nombre):
                 costos_variables = ["FLETES", "CASETAS", "COMBUSTIBLE", "OTROS COSS", "INGRESO"]
 
@@ -1681,7 +1761,6 @@ else:
                 if abs(ingreso_proy) < 1e-9:
                     return 0.0
 
-                # FIJOS LM
                 df_fix = df_base[df_base["Mes_A"] == mes_ant_lm].copy()
                 df_fix = _safe_str(df_fix, "Proyecto_A")
                 df_fix = df_fix[~df_fix["Categoria_A"].isin(costos_variables)]
@@ -1691,6 +1770,7 @@ else:
                     df_fix = df_fix[df_fix["Proyecto_A"].astype(str).isin(cods)]
 
                 df_fix = df_fix[~df_fix["Proyecto_A"].astype(str).isin(["8002", "8003", "8004"])]
+
                 df_var = df_base[df_base["Mes_A"] == mes_act].copy()
                 df_var = _safe_str(df_var, "Proyecto_A")
                 df_var = df_var[df_var["Categoria_A"].isin(costos_variables)]
@@ -1710,7 +1790,6 @@ else:
                     df_var_proj = df_var[df_var["Categoria_A"] != "INGRESO"].copy()
                     df_var_proj["Neto_A"] = df_var_proj["Neto_normalizado"] * ingreso_proy
 
-
                 patio_pro = float(patio(df_base, [mes_ant_lm], codigo_list, pro_nombre) or 0.0)
                 df_junto = pd.concat([df_fix, df_var_proj], ignore_index=True)
                 coss_pro = float(df_junto.loc[df_junto["Clasificacion_A"] == "COSS", "Neto_A"].sum() or 0.0) + patio_pro
@@ -1718,6 +1797,7 @@ else:
 
                 uo = ingreso_proy - coss_pro - gadm_pro
                 return float((uo / ingreso_proy) if abs(ingreso_proy) > 1e-9 else 0.0)
+
             real_pct = {}
             proy_pct = {}
 
@@ -1740,12 +1820,10 @@ else:
 
             # ====== render ======
             st.subheader("Utilidad Operativa por Proyecto")
-
             tabla_excel = pd.DataFrame(
                 {n: [ppt_pct.get(n, 0.0), real_pct.get(n, 0.0), proy_pct.get(n, 0.0)] for n in nombres},
                 index=["PPT", "REAL", "PROYECTADO"]
             )
-
             st.dataframe(tabla_excel.style.format("{:.2%}"), use_container_width=True)
 
             fig = go.Figure()
@@ -1767,9 +1845,10 @@ else:
             )
             st.plotly_chart(fig, use_container_width=True, key="fig_uo_objetivos_tablero")
 
-
         def resumen_empresa(df_ppt, df_real):
-            st.title("Resumen Presupuestal – ESGARI")
+            # ✅ Header pill como en tu foto (sin mover nada)
+            st.markdown('<div class="header-pill">Resumen Presupuestal – ESGARI</div>', unsafe_allow_html=True)
+
             c1, c2 = st.columns([4, 2])
 
             with c1:
@@ -1779,15 +1858,17 @@ else:
                 meses_disponibles = [m for m in meses_ordenados if (m in meses_ppt) or (m in meses_real)]
                 default = meses_disponibles[-1:] if meses_disponibles else []
 
+                st.markdown('<span class="filter-pill">MES(ES)</span>', unsafe_allow_html=True)
                 meses_sel = st.multiselect(
-                    "Mes(es)",
+                    " ",
                     options=meses_disponibles,
                     default=default,
                     key="meses_empresa"
                 )
 
             with c2:
-                vista = st.selectbox("Vista", ["Real vs PPT"], index=0, key="vista_empresa")
+                st.markdown('<span class="filter-pill">VISTA</span>', unsafe_allow_html=True)
+                vista = st.selectbox(" ", ["Real vs PPT"], index=0, key="vista_empresa")
 
             if not meses_sel:
                 st.warning("Selecciona por lo menos un mes.")
@@ -1809,8 +1890,10 @@ else:
             gadm_real, _ = gadmn(df_real, meses_sel, codigo_pro, pro, lista_proyectos)
             gadm_ppt  = float(gadm_ppt or 0.0)
             gadm_real = float(gadm_real or 0.0)
+
             patio_ppt  = float(patio(df_ppt,  meses_sel, codigo_pro, pro) or 0.0)
             patio_real = float(patio(df_real, meses_sel, codigo_pro, pro) or 0.0)
+
             coss_total_ppt  = coss_ppt  + patio_ppt
             coss_total_real = coss_real + patio_real
             uo_ppt  = ing_ppt  - coss_total_ppt  - gadm_ppt
@@ -1847,6 +1930,7 @@ else:
             )
 
             st.divider()
+
             meses_ordenados = ["ene.","feb.","mar.","abr.","may.","jun.","jul.","ago.","sep.","oct.","nov.","dic."]
             orden = {m: i for i, m in enumerate(meses_ordenados)}
             meses_sel_ord = sorted(list(dict.fromkeys(meses_sel)), key=lambda x: orden.get(x, 999))
@@ -1879,11 +1963,12 @@ else:
                 st.plotly_chart(fig2, use_container_width=True, key="fig_drivers_empresa")
 
             st.divider()
+
             df_res = pd.DataFrame([
                 ["INGRESO", ing_ppt, ing_real],
                 ["COSS total", coss_total_ppt, coss_total_real],
                 ["G.ADMN", gadm_ppt, gadm_real],
-                ["PATIO", patio_ppt, patio_real],  
+                ["PATIO", patio_ppt, patio_real],
                 ["U. OPERATIVA", uo_ppt, uo_real],
             ], columns=["Rubro", "PPT", "REAL"])
 
@@ -1904,297 +1989,13 @@ else:
             )
 
             return df_res, meses_sel_ord
-        def tabla_proyectos_proyectado(df_ppt, df_real, fecha_actualizacion, proyectos, list_pro):
-            """
-            PROYECTADO usando la misma lógica que uo_objetivos_en_tablero:
-            - ING_PROY: histórico ingreso (ratio va/fin)
-            - FIJOS: LM (mes anterior) sin variables
-            - VARIABLES: mes actual normalizadas y escaladas a ING_PROY
-            - PATIO: LM
-            """
 
-            # -------- helpers (copiados/compatibles con uo_objetivos...)
-            def _safe_str(df, col):
-                if col in df.columns:
-                    df[col] = df[col].astype(str).str.strip().str.replace(".0", "", regex=False)
-                return df
-
-            def _norm_proy_code(x):
-                return str(x).strip().replace(".0", "")
-
-            costos_variables = ["FLETES", "CASETAS", "COMBUSTIBLE", "OTROS COSS", "INGRESO"]
-
-            meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
-            fecha_completa = pd.to_datetime(fecha_actualizacion["fecha"].iloc[0])
-            idx_mes_act = int(fecha_completa.month - 1)
-            mes_act = meses_ordenados[idx_mes_act]
-            mes_ant_lm = meses_ordenados[(idx_mes_act - 1) % 12]
-
-            def ingreso_proy_historico(df_base, fecha_actualizacion, mes_act, codigo_list, pro_nombre):
-                ingreso_sem = "https://docs.google.com/spreadsheets/d/14l6QLudSBpqxmfuwRqVxCXzhSFzRL0AqWJqVuIOaFFQ/export?format=xlsx"
-                df = cargar_datos(ingreso_sem)
-
-                fecha_completa = pd.to_datetime(fecha_actualizacion["fecha"].iloc[0])
-                fecha_act = int(fecha_completa.day)
-
-                df = df.copy()
-                df["mes"] = pd.to_datetime(df["fecha"]).dt.day
-
-                idx = (df["mes"] - fecha_act).abs().idxmin()
-                dia_ref = int(df.loc[idx, "mes"])
-
-                df_va = df[df["mes"] == dia_ref].copy()
-                df_va["ingreso"] = df_va["ingreso"] / dia_ref * fecha_act
-                df_va = df_va.drop(columns=["mes", "semana", "fecha"], errors="ignore")
-
-                df_fin = df[df["semana"] == 4].copy()
-                df_fin = df_fin.drop(columns=["mes", "semana", "fecha"], errors="ignore")
-
-                df_merged = pd.merge(df_va, df_fin, on="proyecto", suffixes=("_va", "_fin"), how="inner")
-                df_merged["ingreso_dividido"] = df_merged["ingreso_va"] / df_merged["ingreso_fin"].replace(0, pd.NA)
-                df_merged["ingreso_dividido"] = df_merged["ingreso_dividido"].replace([0, float("inf"), -float("inf")], pd.NA)
-
-                # ingreso real mes actual por proyecto
-                df_proy = df_base[df_base["Mes_A"] == mes_act].copy()
-                df_proy = _safe_str(df_proy, "Proyecto_A")
-                df_proy["Neto_A"] = pd.to_numeric(df_proy["Neto_A"], errors="coerce").fillna(0.0)
-
-                df_proy = (
-                    df_proy.groupby(["Proyecto_A", "Categoria_A"], as_index=False)["Neto_A"].sum()
-                )
-                df_proy = df_proy[df_proy["Categoria_A"] == "INGRESO"].drop(columns=["Categoria_A"])
-
-                df_proy["Proyecto_A_num"] = pd.to_numeric(df_proy["Proyecto_A"], errors="coerce")
-                df_merged["proyecto_num"] = pd.to_numeric(df_merged["proyecto"], errors="coerce")
-
-                df_proy = pd.merge(
-                    df_proy,
-                    df_merged[["proyecto_num", "ingreso_dividido"]],
-                    left_on="Proyecto_A_num",
-                    right_on="proyecto_num",
-                    how="left"
-                )
-
-                df_proy["ingreso_dividido"] = pd.to_numeric(df_proy["ingreso_dividido"], errors="coerce")
-                mask_ok = df_proy["ingreso_dividido"].notna() & (df_proy["ingreso_dividido"].abs() > 1e-9)
-
-                # Proyección de ingreso (si no hay ratio, 0 conservador)
-                df_proy.loc[mask_ok, "Neto_A"] = df_proy.loc[mask_ok, "Neto_A"] / df_proy.loc[mask_ok, "ingreso_dividido"]
-                df_proy.loc[~mask_ok, "Neto_A"] = 0.0
-
-                if pro_nombre != "ESGARI":
-                    cods = [str(x).strip() for x in codigo_list]
-                    df_proy = df_proy[df_proy["Proyecto_A"].astype(str).isin(cods)]
-
-                return float(df_proy["Neto_A"].sum() or 0.0)
-
-            def calc_montos_proy(df_base, fecha_actualizacion, mes_act, mes_ant_lm, codigo_list, pro_nombre):
-                """
-                Regresa: (ingreso_proy, coss_total_proy, gadm_proy)
-                usando la misma mecánica del tablero (%UO), pero en montos.
-                """
-                ingreso_proy = float(ingreso_proy_historico(df_base, fecha_actualizacion, mes_act, codigo_list, pro_nombre) or 0.0)
-                if abs(ingreso_proy) < 1e-9:
-                    return 0.0, 0.0, 0.0
-
-                # FIJOS LM (mes anterior) sin variables
-                df_fix = df_base[df_base["Mes_A"] == mes_ant_lm].copy()
-                df_fix = _safe_str(df_fix, "Proyecto_A")
-                df_fix["Neto_A"] = pd.to_numeric(df_fix["Neto_A"], errors="coerce").fillna(0.0)
-                df_fix = df_fix[~df_fix["Categoria_A"].isin(costos_variables)]
-
-                if pro_nombre != "ESGARI":
-                    cods = [str(x).strip() for x in codigo_list]
-                    df_fix = df_fix[df_fix["Proyecto_A"].astype(str).isin(cods)]
-
-                df_fix = df_fix[~df_fix["Proyecto_A"].astype(str).isin(["8002", "8003", "8004"])]
-
-                # VARIABLES mes actual (normalizadas) escaladas a ingreso_proy
-                df_var = df_base[df_base["Mes_A"] == mes_act].copy()
-                df_var = _safe_str(df_var, "Proyecto_A")
-                df_var["Neto_A"] = pd.to_numeric(df_var["Neto_A"], errors="coerce").fillna(0.0)
-                df_var = df_var[df_var["Categoria_A"].isin(costos_variables)]
-
-                if pro_nombre != "ESGARI":
-                    cods = [str(x).strip() for x in codigo_list]
-                    df_var = df_var[df_var["Proyecto_A"].astype(str).isin(cods)]
-
-                ingreso_real_base = float(df_var.loc[df_var["Categoria_A"] == "INGRESO", "Neto_A"].sum() or 0.0)
-
-                if abs(ingreso_real_base) < 1e-9:
-                    df_var_proj = df_var[df_var["Categoria_A"] != "INGRESO"].copy()
-                    df_var_proj["Neto_A"] = 0.0
-                else:
-                    df_var["Neto_normalizado"] = df_var["Neto_A"] / ingreso_real_base
-                    df_var_proj = df_var[df_var["Categoria_A"] != "INGRESO"].copy()
-                    df_var_proj["Neto_A"] = df_var_proj["Neto_normalizado"] * ingreso_proy
-
-                patio_proy = float(patio(df_base, [mes_ant_lm], codigo_list, pro_nombre) or 0.0)
-
-                df_junto = pd.concat([df_fix, df_var_proj], ignore_index=True)
-
-                coss_proy = float(df_junto.loc[df_junto["Clasificacion_A"] == "COSS", "Neto_A"].sum() or 0.0) + patio_proy
-                gadm_proy = float(df_junto.loc[df_junto["Clasificacion_A"] == "G.ADMN", "Neto_A"].sum() or 0.0)
-
-                return ingreso_proy, coss_proy, gadm_proy
-
-            # --------- proyectos visibles (misma lógica de tablero)
-            proyectos_local = proyectos.copy()
-            proyectos_local["proyectos"] = proyectos_local["proyectos"].astype(str).str.strip().str.replace(".0", "", regex=False)
-            proyectos_local["nombre"] = proyectos_local["nombre"].astype(str).str.strip()
-
-            allowed = [str(x).strip() for x in st.session_state.get("proyectos", [])]
-            if allowed == ["ESGARI"]:
-                df_visibles = proyectos_local.copy()
-            else:
-                df_visibles = proyectos_local[proyectos_local["proyectos"].isin(allowed)].copy()
-
-            excluir = {"8002", "8003", "8004", "0"}
-            df_visibles = df_visibles[~df_visibles["proyectos"].astype(str).isin(excluir)].copy()
-
-            mapa = dict(zip(df_visibles["proyectos"], df_visibles["nombre"]))
-            proyectos_visibles = df_visibles["proyectos"].tolist()
-
-            # --------- arma tabla
-            df_ppt = df_ppt.copy()
-            for c in ["Proyecto_A","Mes_A","Clasificacion_A","Categoria_A","CeCo_A"]:
-                if c in df_ppt.columns:
-                    df_ppt[c] = df_ppt[c].astype(str).str.strip().str.replace(".0", "", regex=False)
-            if "Neto_A" in df_ppt.columns:
-                df_ppt["Neto_A"] = pd.to_numeric(df_ppt["Neto_A"], errors="coerce").fillna(0.0)
-
-            rows = []
-            for p in proyectos_visibles:
-                nombre = mapa.get(p, p)
-                codigo_list = [_norm_proy_code(p)]
-
-                # PPT: lo comparo contra mes_act (porque PROY está en mes_act)
-                ing_ppt = float(ingreso(df_ppt, [mes_act], codigo_list, nombre) or 0.0)
-                coss_ppt, _ = coss(df_ppt, [mes_act], codigo_list, nombre, list_pro)
-                coss_ppt = float(coss_ppt or 0.0)
-                patio_ppt = float(patio(df_ppt, [mes_act], codigo_list, nombre) or 0.0)
-                coss_total_ppt = coss_ppt + patio_ppt
-                gadm_ppt, _ = gadmn(df_ppt, [mes_act], codigo_list, nombre, list_pro)
-                gadm_ppt = float(gadm_ppt or 0.0)
-
-                # PROY (mismos cálculos que uo_objetivos...)
-                ing_proy, coss_total_proy, gadm_proy = calc_montos_proy(
-                    df_base=df_real,
-                    fecha_actualizacion=fecha_actualizacion,
-                    mes_act=mes_act,
-                    mes_ant_lm=mes_ant_lm,
-                    codigo_list=codigo_list,
-                    pro_nombre=nombre if nombre != "ESGARI" else "ESGARI"
-                )
-
-                rows.append({
-                    "PROYECTO": nombre,
-                    "ING_PPT": ing_ppt,
-                    "ING_PROY": float(ing_proy),
-                    "COSS_PPT": float(coss_total_ppt),
-                    "COSS_PROY": float(coss_total_proy),
-                    "GADM_PPT": float(gadm_ppt),
-                    "GADM_PROY": float(gadm_proy),
-                })
-
-            tabla = pd.DataFrame(rows).fillna(0.0)
-
-            # variaciones
-            tabla["VAR.PPT"] = np.where(tabla["ING_PPT"] != 0, (tabla["ING_PROY"] / tabla["ING_PPT"]) - 1, 0.0)
-            tabla["VAR. COSS"] = np.where(tabla["COSS_PPT"] != 0, (tabla["COSS_PROY"] / tabla["COSS_PPT"]) - 1, 0.0)
-            tabla["VAR. G.ADM"] = np.where(tabla["GADM_PPT"] != 0, (tabla["GADM_PROY"] / tabla["GADM_PPT"]) - 1, 0.0)
-
-            def _arrow(v, tol=1e-9):
-                try:
-                    v = float(v)
-                except:
-                    return ""
-                if v > tol: return " ↑"
-                if v < -tol: return " ↓"
-                return " →"
-
-            tabla["VAR.PPT_TXT"] = tabla["VAR.PPT"].apply(lambda x: f"{x:.2%}{_arrow(x)}")
-            tabla["VAR. COSS_TXT"] = tabla["VAR. COSS"].apply(lambda x: f"{x:.2%}{_arrow(x)}")
-            tabla["VAR. G.ADM_TXT"] = tabla["VAR. G.ADM"].apply(lambda x: f"{x:.2%}{_arrow(x)}")
-
-            out = tabla[[
-                "PROYECTO",
-                "ING_PROY", "VAR.PPT_TXT",
-                "COSS_PROY", "VAR. COSS_TXT",
-                "GADM_PROY", "VAR. G.ADM_TXT"
-            ]].copy()
-
-            # TOTAL
-            total_ing_proy  = float(tabla["ING_PROY"].sum())
-            total_ing_ppt   = float(tabla["ING_PPT"].sum())
-            total_coss_proy = float(tabla["COSS_PROY"].sum())
-            total_coss_ppt  = float(tabla["COSS_PPT"].sum())
-            total_gadm_proy = float(tabla["GADM_PROY"].sum())
-            total_gadm_ppt  = float(tabla["GADM_PPT"].sum())
-
-            total_var_ppt  = (total_ing_proy  / total_ing_ppt  - 1) if total_ing_ppt  != 0 else 0.0
-            total_var_coss = (total_coss_proy / total_coss_ppt - 1) if total_coss_ppt != 0 else 0.0
-            total_var_gadm = (total_gadm_proy / total_gadm_ppt - 1) if total_gadm_ppt != 0 else 0.0
-
-            total_row = pd.DataFrame([{
-                "PROYECTO": "TOTAL",
-                "ING_PROY": total_ing_proy,
-                "VAR.PPT_TXT": f"{total_var_ppt:.2%}{_arrow(total_var_ppt)}",
-                "COSS_PROY": total_coss_proy,
-                "VAR. COSS_TXT": f"{total_var_coss:.2%}{_arrow(total_var_coss)}",
-                "GADM_PROY": total_gadm_proy,
-                "VAR. G.ADM_TXT": f"{total_var_gadm:.2%}{_arrow(total_var_gadm)}",
-            }])
-
-            out = pd.concat([out, total_row], ignore_index=True)
-
-            # estilos iguales a tu bloque
-            BLUE = "#0B2A4A"
-            GRIS_1 = "#FFFFFF"
-            GRIS_2 = "#F2F2F2"
-            BORDE = "#D0D0D0"
-
-            def estilo_filas(row):
-                if str(row["PROYECTO"]).upper() == "TOTAL":
-                    return ["background-color:#FFFFFF; color:black; font-weight:800;"] * len(row)
-                bg = GRIS_1 if row.name % 2 == 0 else GRIS_2
-                return [f"background-color:{bg}; color:black;"] * len(row)
-
-            st.subheader(f"Operación por proyecto (Proyectado)")
-
-            st.dataframe(
-                out.style
-                    .apply(estilo_filas, axis=1)
-                    .set_table_styles([
-                        {"selector": "thead th",
-                        "props": f"background-color:{BLUE};color:white;font-weight:900;font-size:13px;border:1px solid {BORDE};text-align:center;"},
-                        {"selector": "tbody td",
-                        "props": f"border:1px solid {BORDE};font-size:12px;"},
-                        {"selector": "table",
-                        "props": "border-collapse:collapse; width:100%;"},
-                    ])
-                    .format({
-                        "ING_PROY": "${:,.2f}",
-                        "COSS_PROY": "${:,.2f}",
-                        "GADM_PROY": "${:,.2f}",
-                        "VAR.PPT_TXT": "{}",
-                        "VAR. COSS_TXT": "{}",
-                        "VAR. G.ADM_TXT": "{}",
-                    })
-                    .set_properties(subset=["PROYECTO"], **{"text-align": "left", "font-weight": "700"})
-                    .set_properties(subset=[
-                        "ING_PROY", "VAR.PPT_TXT",
-                        "COSS_PROY", "VAR. COSS_TXT",
-                        "GADM_PROY", "VAR. G.ADM_TXT"
-                    ], **{"text-align": "right"}),
-                use_container_width=True,
-                height=420
-            )
-
-            return out
-
+        # =========================
+        # TU FLUJO (igual, sin mover nada)
+        # =========================
         df_res, meses_sel = resumen_empresa(df_ppt, df_real)
         st.divider()
+
         df_proyectos = proyectos.copy()
         df_proyectos["proyectos"] = df_proyectos["proyectos"].astype(str).str.strip()
         df_proyectos["nombre"] = df_proyectos["nombre"].astype(str).str.strip()
@@ -2205,7 +2006,9 @@ else:
             meses_seleccionado=meses_sel,
             df_proyectos=df_proyectos
         )
+
         st.divider()
+
         df_pro = st.session_state.get("df_pro", None)
         if df_pro is None:
             df_pro = st.session_state.get("PROY_df_junto", None)
@@ -2217,8 +2020,9 @@ else:
             proyectos=proyectos,
             list_pro=list_pro
         )
-        
-        st.divider()        
+
+        st.divider()
+
         uo_objetivos_en_tablero(
             df_ppt=df_ppt,
             df_real=df_real,
@@ -2228,6 +2032,9 @@ else:
             meses_sel=meses_sel
         )
 
+        st.divider()
+
+        
     elif selected == "Vista Dep.":
 
         st.markdown("""
@@ -2356,8 +2163,26 @@ else:
 
         cecos_sel = _norm_code_list(ceco_codigo)
 
-        if cecos_sel and ("0" not in cecos_sel):
+        # --- justo después de:
+        # cecos_sel = _norm_code_list(ceco_codigo)
+
+        # ✅ CAMBIO: CECO "0" SOLO se agrega cuando el usuario selecciona "Esgari" en el filtro
+        # (usamos ceco_nombre porque ahí viene el texto "Esgari")
+        esgari_sel = False
+        try:
+            if isinstance(ceco_nombre, str):
+                esgari_sel = (ceco_nombre.strip().lower() == "esgari")
+            else:
+                esgari_sel = any(str(x).strip().lower() == "esgari" for x in (ceco_nombre or []))
+        except:
+            esgari_sel = False
+
+        if cecos_sel and esgari_sel and ("0" not in cecos_sel):
             cecos_sel = cecos_sel + ["0"]
+
+        # (opcional recomendado) si NO está Esgari seleccionado y por alguna razón viene "0", lo quitamos
+        if cecos_sel and (not esgari_sel) and ("0" in cecos_sel):
+            cecos_sel = [x for x in cecos_sel if x != "0"]
 
         col_mes_ppt  = _coalesce_cols(df_ppt,  ["Mes_A"])
         col_mes_real = _coalesce_cols(df_real, ["Mes_A"])
@@ -2760,7 +2585,6 @@ else:
 
         with f2:
             st.markdown('<span class="filter-pill">PROYECTO</span>', unsafe_allow_html=True)
-
             # tu filtro_pro regresa (codigo, nombre)
             proyecto_codigo, proyecto_nombre = filtro_pro(f2)
 
@@ -2777,12 +2601,27 @@ else:
             st.error("Selecciona por lo menos un mes.")
             st.stop()
 
+        esgari_sel = False
+        try:
+            if isinstance(proyecto_nombre, str):
+                esgari_sel = (proyecto_nombre.strip().lower() == "esgari")
+            else:
+                esgari_sel = any(str(x).strip().lower() == "esgari" for x in (proyecto_nombre or []))
+        except:
+            esgari_sel = False
+
         proys_sel = _norm_list(proyecto_codigo)
-        if proys_sel:
-            if "0" not in proys_sel:
-                proys_sel = proys_sel + ["0"]
+
+        if proys_sel and esgari_sel and ("0" not in proys_sel):
+            proys_sel = proys_sel + ["0"]
+
+        # si NO es ESGARI y por alguna razón viene 0, lo quitamos
+        if proys_sel and (not esgari_sel) and ("0" in proys_sel):
+            proys_sel = [x for x in proys_sel if x != "0"]
+
         col_mes_ppt  = _coalesce_cols(df_ppt,  ["Mes_A"])
         col_mes_real = _coalesce_cols(df_real, ["Mes_A"])
+
         col_proy_ppt  = _coalesce_cols(df_ppt,  ["Proyecto_A"])
         col_proy_real = _coalesce_cols(df_real, ["Proyecto_A"])
 
@@ -2795,7 +2634,7 @@ else:
         col_cat_ppt  = _coalesce_cols(df_ppt,  ["Categoria_A"])
         col_cat_real = _coalesce_cols(df_real, ["Categoria_A"])
 
-        # 👇 CAMBIO: TOP 10 con nombre de cuenta
+        # TOP 10 con nombre de cuenta
         col_cta_real = _coalesce_cols(df_real, ["Cuenta_Nombre_A", "Cuenta_Nombre", "CuentaNombre", "CuentaNombre_A"])
 
         missing = [x for x in [
@@ -2825,31 +2664,38 @@ else:
 
         dfp_f = dfp[dfp[col_mes_ppt].isin(meses_usar)].copy()
         dfr_f = dfr[dfr[col_mes_real].isin(meses_usar)].copy()
-
         if proys_sel:
             dfp_f = dfp_f[dfp_f[col_proy_ppt].isin(proys_sel)].copy()
             dfr_f = dfr_f[dfr_f[col_proy_real].isin(proys_sel)].copy()
 
         ingreso_ppt  = _sum_where(dfp_f, (dfp_f[col_cat_ppt] == "INGRESO"), col_monto_ppt)
         ingreso_real = _sum_where(dfr_f, (dfr_f[col_cat_real] == "INGRESO"), col_monto_real)
+
         gadmn_ppt  = _sum_where(dfp_f, (dfp_f[col_clas_ppt] == "G.ADMN"), col_monto_ppt)
         gadmn_real = _sum_where(dfr_f, (dfr_f[col_clas_real] == "G.ADMN"), col_monto_real)
+
         coss_ppt  = _sum_where(dfp_f, (dfp_f[col_clas_ppt] == "COSS"), col_monto_ppt)
         coss_real = _sum_where(dfr_f, (dfr_f[col_clas_real] == "COSS"), col_monto_real)
+
         total_ppt  = coss_ppt + gadmn_ppt
         total_real = coss_real + gadmn_real
 
         total_ppt_ajustado = (_safe_div(total_ppt, ingreso_ppt) * ingreso_real) if ingreso_ppt else total_ppt
+        ingreso_proyectado_raw = st.session_state.get("PROY_ingreso_pro_fut", 0.0)
 
-        ingreso_proyectado = float(st.session_state.get("PROY_ingreso_pro_fut", 0.0))
+        ingreso_proyectado = 0.0
+        if isinstance(ingreso_proyectado_raw, dict):
+            ingreso_proyectado = float(sum(float(ingreso_proyectado_raw.get(p, 0.0) or 0.0) for p in (proys_sel or [])))
+        else:
+            ingreso_proyectado = float(ingreso_proyectado_raw or 0.0)
+
         mes_proy_activo = st.session_state.get("PROY_mes_act", None)
         mes_proy_activo = norm_mes(mes_proy_activo) if mes_proy_activo else None
         mostrar_recomendado = (modo == "Mes") and (mes_proy_activo is not None) and (norm_mes(mes_unico) == mes_proy_activo)
         recomendado_m = (_safe_div(total_ppt, ingreso_ppt) * ingreso_proyectado) if (ingreso_ppt and mostrar_recomendado) else 0.0
 
-        # % ejecutado vs ppt y % participación (gastado / ppt ajustado)
         pct_ejecutado = (total_real / total_ppt * 100) if total_ppt else 0.0
-        pct_participacion = (total_real / total_ppt_ajustado * 100) if total_ppt_ajustado else 0.0  # 👈 NUEVO
+        pct_participacion = (total_real / total_ppt_ajustado * 100) if total_ppt_ajustado else 0.0
 
         dif_real_vs_ppt = total_real - total_ppt
         dif_s_ingresos = total_real - total_ppt_ajustado
@@ -2902,7 +2748,6 @@ else:
 
         with c_pie1:
             st.markdown('<div class="card">', unsafe_allow_html=True)
-
             pie_df = pd.DataFrame({
                 "Estado": ["Ejecutado", "Restante"],
                 "Valor": [max(pct_ejecutado, 0), max(100 - pct_ejecutado, 0)]
@@ -2925,7 +2770,6 @@ else:
 
         with c_pie2:
             st.markdown('<div class="card">', unsafe_allow_html=True)
-
             pie_df2 = pd.DataFrame({
                 "Estado": ["Participación", "Restante"],
                 "Valor": [max(pct_participacion, 0), max(100 - pct_participacion, 0)]
@@ -2960,7 +2804,6 @@ else:
             <div class="value">{money(dif_s_ingresos)}</div>
             </div>
             """, unsafe_allow_html=True)
-
         st.write("")
         st.markdown('<div class="card">', unsafe_allow_html=True)
 
@@ -2984,7 +2827,6 @@ else:
             f"<div style='font-weight:800; margin-top:6px;'>Avance ingreso: {pct_ing:.0f}% (Real / PPT)</div>",
             unsafe_allow_html=True
         )
-
         st.markdown("</div>", unsafe_allow_html=True)
         st.write("")
         d1, d2 = st.columns(2)
@@ -3053,7 +2895,7 @@ else:
             if top_coss.empty:
                 st.info("No hay datos REAL para TOP 10 cuentas (COSS).")
             else:
-                top_coss["Etiqueta"] = top_coss[col_cta_real].astype(str) + " | " + top_coss["Monto"].apply(_fmt_compacto)
+                top_coss["Etiqueta"] = top_coss["Monto"].apply(_fmt_compacto)  # ✅ solo número
                 fig_top_coss = px.bar(
                     top_coss.sort_values("Monto", ascending=True),
                     x="Monto",
@@ -3075,7 +2917,7 @@ else:
             if top_gadm.empty:
                 st.info("No hay datos REAL para TOP 10 cuentas (G.ADMN).")
             else:
-                top_gadm["Etiqueta"] = top_gadm[col_cta_real].astype(str) + " | " + top_gadm["Monto"].apply(_fmt_compacto)
+                top_gadm["Etiqueta"] = top_gadm["Monto"].apply(_fmt_compacto)  # ✅ solo número
                 fig_top_gadm = px.bar(
                     top_gadm.sort_values("Monto", ascending=True),
                     x="Monto",
@@ -3090,7 +2932,7 @@ else:
                 )
                 st.plotly_chart(fig_top_gadm, use_container_width=True)
             st.markdown("</div>", unsafe_allow_html=True)
-
+            
     elif selected == "Ingresos":
 
         def tabla_ingresos(df_ppt, df_real, meses_seleccionado, proyectos_seleccionados):
@@ -6091,342 +5933,6 @@ else:
             return out_show
 
         tabla_diferencias(df_ppt, df_base)
-
-
-    elif selected == "Dashboard":
-        meses_ordenados = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
-
-        def _ordenar_meses(df, col_mes="Mes_A"):
-            df = df.copy()
-            orden = {m: i for i, m in enumerate(meses_ordenados)}
-            df["__ord"] = df[col_mes].map(orden).fillna(999).astype(int)
-            df = df.sort_values("__ord").drop(columns="__ord")
-            return df
-
-        def to_float(x):
-            if x is None:
-                return 0.0
-            if isinstance(x, str):
-                x = x.replace("%", "").strip()
-                try:
-                    v = float(x)
-                    return v / 100 if v > 1 else v
-                except:
-                    return 0.0
-            try:
-                return float(x)
-            except:
-                return 0.0
-
-        def _filtrar_proyectos_df(df, proyectos_codigos, pro_nombre="ESGARI"):
-            """
-            Si pro_nombre == ESGARI => NO filtra (todos).
-            Si pro_nombre != ESGARI => filtra por Proyecto_A en proyectos_codigos.
-            """
-            base = df.copy()
-            base.columns = base.columns.astype(str).str.strip()
-            if "Proyecto_A" not in base.columns:
-                return base
-
-            base["Proyecto_A"] = base["Proyecto_A"].astype(str).str.strip().str.replace(".0", "", regex=False)
-
-            if str(pro_nombre).strip().upper() == "ESGARI":
-                return base  # ESGARI = todos
-
-            cods = [str(x).strip().replace(".0", "") for x in (proyectos_codigos or [])]
-            if not cods:
-                return base.iloc[0:0].copy()
-            return base[base["Proyecto_A"].isin(cods)].copy()
-
-        def _serie_por_mes(df, meses, proyectos_codigos, pro_nombre, fn_valor):
-            """
-            Devuelve DataFrame: Mes_A | VAL
-            fn_valor(df, [mes], codigo_pro, pro_nombre) -> float
-            """
-            orden = {m: i for i, m in enumerate(meses_ordenados)}
-            meses_clean = [str(m).strip() for m in (meses or []) if str(m).strip() != ""]
-            meses_clean = sorted(list(dict.fromkeys(meses_clean)), key=lambda x: orden.get(x, 999))
-
-            out = []
-            for m in meses_clean:
-                v = float(fn_valor(df, [m], proyectos_codigos, pro_nombre) or 0.0)
-                out.append({"Mes_A": m, "VAL": v})
-
-            df_out = pd.DataFrame(out)
-            if df_out.empty:
-                return pd.DataFrame({"Mes_A": [], "VAL": []})
-            return _ordenar_meses(df_out, "Mes_A")
-
-        def _ingresos_total_por_mes(df, meses, proyectos_codigos, pro_nombre):
-            def _calc(df_local, meses_local, cods, pro):
-                codigo_pro = [] if str(pro).strip().upper() == "ESGARI" else [
-                    str(x).strip().replace(".0", "") for x in (cods or [])
-                ]
-                return float(ingreso(df_local, meses_local, codigo_pro, pro) or 0.0)
-
-            return _serie_por_mes(df, meses, proyectos_codigos, pro_nombre, _calc).rename(columns={"VAL": "INGRESO"})
-
-        def _COSS_total(df, meses, proyectos_codigos, pro_nombre):
-            def _calc(df_local, meses_local, cods, pro):
-                codigo_pro = [] if str(pro).strip().upper() == "ESGARI" else [
-                    str(x).strip().replace(".0", "") for x in (cods or [])
-                ]
-                coss_base, _ = coss(df_local, meses_local, codigo_pro, pro, list_pro)
-                coss_base = float(coss_base or 0.0)
-                pat = float(patio(df_local, meses_local, codigo_pro, pro) or 0.0)
-                return coss_base + pat
-
-            return _serie_por_mes(df, meses, proyectos_codigos, pro_nombre, _calc).rename(columns={"VAL": "COSS"})
-
-        def _GADMN_total(df, meses, proyectos_codigos, pro_nombre):
-            def _calc(df_local, meses_local, cods, pro):
-                codigo_pro = [] if str(pro).strip().upper() == "ESGARI" else [
-                    str(x).strip().replace(".0", "") for x in (cods or [])
-                ]
-                g, _ = gadmn(df_local, meses_local, codigo_pro, pro, list_pro)
-                return float(g or 0.0)
-
-            return _serie_por_mes(df, meses, proyectos_codigos, pro_nombre, _calc).rename(columns={"VAL": "G.ADMN"})
-
-        def _linea_ppt_real(df_ppt_mes, df_real_mes, titulo):
-            if df_ppt_mes is None:
-                df_ppt_mes = pd.DataFrame({"Mes_A": [], "PPT": []})
-            if df_real_mes is None:
-                df_real_mes = pd.DataFrame({"Mes_A": [], "REAL": []})
-
-            line = df_ppt_mes.merge(df_real_mes, on="Mes_A", how="outer").fillna(0)
-            if "PPT" not in line.columns:
-                line["PPT"] = 0
-            if "REAL" not in line.columns:
-                line["REAL"] = 0
-
-            line = _ordenar_meses(line, "Mes_A")
-            if line.empty:
-                return None
-
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=line["Mes_A"], y=line["PPT"], mode="lines+markers", name="PPT"))
-            fig.add_trace(go.Scatter(x=line["Mes_A"], y=line["REAL"], mode="lines+markers", name="REAL"))
-            fig.update_layout(
-                title=titulo,
-                xaxis_title="Mes",
-                yaxis_title="MXN",
-                height=380,
-                hovermode="x unified"
-            )
-            return fig
-
-        def _bar_mes_ppt_real(df_ppt_mes, df_real_mes, titulo, unidad="MXN"):
-            if df_ppt_mes is None:
-                df_ppt_mes = pd.DataFrame({"Mes_A": [], "PPT": []})
-            if df_real_mes is None:
-                df_real_mes = pd.DataFrame({"Mes_A": [], "REAL": []})
-
-            bar = df_ppt_mes.merge(df_real_mes, on="Mes_A", how="outer").fillna(0)
-            if "PPT" not in bar.columns:
-                bar["PPT"] = 0
-            if "REAL" not in bar.columns:
-                bar["REAL"] = 0
-
-            bar = _ordenar_meses(bar, "Mes_A")
-            if bar.empty:
-                return None
-
-            fig = go.Figure()
-            fig.add_bar(
-                x=bar["Mes_A"],
-                y=bar["PPT"],
-                name="PPT",
-                text=[f"${v:,.0f}" for v in bar["PPT"]],
-                textposition="outside"
-            )
-            fig.add_bar(
-                x=bar["Mes_A"],
-                y=bar["REAL"],
-                name="REAL",
-                text=[f"${v:,.0f}" for v in bar["REAL"]],
-                textposition="outside"
-            )
-
-            fig.update_layout(
-                title=titulo,
-                xaxis_title="Mes",
-                yaxis_title=unidad,
-                barmode="group",
-                height=420,
-                hovermode="x unified",
-                legend_title="Tipo"
-            )
-            return fig
-
-        df_ppt = df_ppt.copy()
-        df_real = df_real.copy()
-        df_ppt.columns = df_ppt.columns.astype(str).str.strip()
-        df_real.columns = df_real.columns.astype(str).str.strip()
-
-        if "Mes_A" not in df_ppt.columns or "Mes_A" not in df_real.columns:
-            st.error("Falta la columna Mes_A en df_ppt o df_real. Revisa nombres de columnas.")
-            with st.expander("🛠 Diagnóstico DASHBOARD", expanded=True):
-                st.write("Columnas PPT:", list(df_ppt.columns))
-                st.write("Columnas REAL:", list(df_real.columns))
-            st.stop()
-
-        meses_ppt = df_ppt["Mes_A"].astype(str).str.strip().unique().tolist()
-        meses_real = df_real["Mes_A"].astype(str).str.strip().unique().tolist()
-        meses_disponibles = [m for m in meses_ordenados if (m in meses_ppt) or (m in meses_real)]
-
-        c_f1, c_f2 = st.columns([1.2, 1])
-
-        with c_f1:
-            meses_sel = st.multiselect(
-                "Selecciona mes(es):",
-                options=meses_disponibles,
-                default=meses_disponibles[-1:] if meses_disponibles else [],
-                key="dashboard_meses_excel"
-            )
-            if not meses_sel:
-                st.error("Favor de seleccionar por lo menos un mes.")
-                st.stop()
-
-        with c_f2:
-            proyecto_codigo, proyecto_nombre = filtro_pro(c_f2)  
-        ing_ppt_mes  = _ingresos_total_por_mes(df_ppt,  meses_sel, proyecto_codigo, proyecto_nombre).rename(columns={"INGRESO": "PPT"})
-        ing_real_mes = _ingresos_total_por_mes(df_real, meses_sel, proyecto_codigo, proyecto_nombre).rename(columns={"INGRESO": "REAL"})
-        fig_ing_line = _linea_ppt_real(ing_ppt_mes, ing_real_mes, "INGRESO (línea)")
-
-        coss_ppt_mes  = _COSS_total(df_ppt,  meses_sel, proyecto_codigo, proyecto_nombre).rename(columns={"COSS": "PPT"})
-        coss_real_mes = _COSS_total(df_real, meses_sel, proyecto_codigo, proyecto_nombre).rename(columns={"COSS": "REAL"})
-        fig_coss_line = _linea_ppt_real(coss_ppt_mes, coss_real_mes, "COSS (línea)")
-
-        gadmn_ppt_mes  = _GADMN_total(df_ppt,  meses_sel, proyecto_codigo, proyecto_nombre).rename(columns={"G.ADMN": "PPT"})
-        gadmn_real_mes = _GADMN_total(df_real, meses_sel, proyecto_codigo, proyecto_nombre).rename(columns={"G.ADMN": "REAL"})
-        fig_gadmn_line = _linea_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN (línea)")
-
-        fig_ing_bar   = _bar_mes_ppt_real(ing_ppt_mes,  ing_real_mes,  "INGRESO mensual (PPT vs REAL)")
-        fig_coss_bar  = _bar_mes_ppt_real(coss_ppt_mes, coss_real_mes, "COSS mensual (PPT vs REAL)")
-        fig_gadmn_bar = _bar_mes_ppt_real(gadmn_ppt_mes, gadmn_real_mes, "G.ADMN mensual (PPT vs REAL)")
-        excluir_uo = {"8002", "8003", "8004"}
-
-        proyectos_local = proyectos.copy()
-        proyectos_local["proyectos"] = proyectos_local["proyectos"].astype(str).str.strip().str.replace(".0", "", regex=False)
-        proyectos_local["nombre"] = proyectos_local["nombre"].astype(str).str.strip()
-        allowed = [str(x).strip() for x in st.session_state.get("proyectos", [])]
-
-        if allowed == ["ESGARI"]:
-            df_visibles = proyectos_local.copy()
-        else:
-            df_visibles = proyectos_local[proyectos_local["proyectos"].isin(allowed)].copy()
-
-        df_visibles = df_visibles.dropna(subset=["proyectos", "nombre"]).copy()
-        if str(proyecto_nombre).strip().upper() != "ESGARI":
-            cods_sel = [str(x).strip().replace(".0", "") for x in (proyecto_codigo or [])]
-            df_visibles_uo = df_visibles[df_visibles["proyectos"].isin(cods_sel)].copy()
-        else:
-            df_visibles_uo = df_visibles.copy()
-        df_visibles_uo = df_visibles_uo[~df_visibles_uo["proyectos"].isin(excluir_uo)].copy()
-
-        nombres_uo = df_visibles_uo["nombre"].tolist()
-        codigos_uo = df_visibles_uo["proyectos"].tolist()
-
-        ppt_pct, real_pct = {}, {}
-        for nombre, codigo in zip(nombres_uo, codigos_uo):
-            codigo_list = [str(codigo)]
-            er_ppt  = estado_resultado(df_ppt,  meses_sel, nombre, codigo_list, list_pro) or {}
-            er_real = estado_resultado(df_real, meses_sel, nombre, codigo_list, list_pro) or {}
-            ppt_pct[nombre]  = to_float(er_ppt.get("por_utilidad_operativa"))
-            real_pct[nombre] = to_float(er_real.get("por_utilidad_operativa"))
-
-        df_uo = pd.DataFrame({
-            "Proyecto": nombres_uo,
-            "PPT":  [ppt_pct.get(n, 0.0)  for n in nombres_uo],
-            "REAL": [real_pct.get(n, 0.0) for n in nombres_uo],
-        }).sort_values("REAL", ascending=False)
-
-        fig_uo = go.Figure()
-        fig_uo.add_bar(
-            x=df_uo["Proyecto"],
-            y=df_uo["PPT"],
-            name="PPT",
-            text=[f"{v*100:.1f}%" for v in df_uo["PPT"]],
-            textposition="outside"
-        )
-        fig_uo.add_bar(
-            x=df_uo["Proyecto"],
-            y=df_uo["REAL"],
-            name="REAL",
-            text=[f"{v*100:.1f}%" for v in df_uo["REAL"]],
-            textposition="outside"
-        )
-        fig_uo.update_layout(
-            title="% Utilidad Operativa",
-            xaxis_title="Proyecto",
-            yaxis_title="%",
-            barmode="group",
-            height=520,
-            hovermode="x unified",
-            xaxis_tickangle=-25,
-            xaxis_tickformat=".0%"
-        )
-
-        tab1, tab2 = st.tabs(["Mensual", "YTD"])
-
-        with tab1:
-            m1, m2 = st.columns(2)
-            with m1:
-                if fig_ing_bar is None:
-                    st.info("No hay datos de INGRESO para los meses seleccionados.")
-                else:
-                    st.plotly_chart(fig_ing_bar, use_container_width=True, key="m_ing_bar")
-
-            with m2:
-                if fig_coss_bar is None:
-                    st.info("No hay datos de COSS para los meses seleccionados.")
-                else:
-                    st.plotly_chart(fig_coss_bar, use_container_width=True, key="m_coss_bar")
-
-            m3, m4 = st.columns(2)
-            with m3:
-                if fig_gadmn_bar is None:
-                    st.info("No hay datos de G.ADMN para los meses seleccionados.")
-                else:
-                    st.plotly_chart(fig_gadmn_bar, use_container_width=True, key="m_gadmn_bar")
-
-            with m4:
-                if df_uo.empty:
-                    st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
-                else:
-                    st.plotly_chart(fig_uo, use_container_width=True, key="m_uo_bar")
-
-        with tab2:
-            st.subheader("YTD")
-            c1, c2 = st.columns(2)
-            with c1:
-                if fig_ing_line is None:
-                    st.info("No hay datos de INGRESO para los meses seleccionados.")
-                else:
-                    st.plotly_chart(fig_ing_line, use_container_width=True, key="ytd_ing_line")
-
-            with c2:
-                if fig_coss_line is None:
-                    st.info("No hay datos de COSS para los meses seleccionados.")
-                else:
-                    st.plotly_chart(fig_coss_line, use_container_width=True, key="ytd_coss_line")
-
-            c3, c4 = st.columns(2)
-            with c3:
-                if fig_gadmn_line is None:
-                    st.info("No hay datos de G.ADMN para los meses seleccionados.")
-                else:
-                    st.plotly_chart(fig_gadmn_line, use_container_width=True, key="ytd_gadmn_line")
-
-            with c4:
-                if df_uo.empty:
-                    st.info("No hay datos para % Utilidad Operativa con los filtros seleccionados.")
-                else:
-                    st.plotly_chart(fig_uo, use_container_width=True, key="ytd_uo_bar")
-                    
-
-
 
 
 
