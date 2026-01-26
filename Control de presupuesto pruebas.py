@@ -1326,8 +1326,8 @@ else:
     elif st.session_state["rol"] == "gerente":
         selected = option_menu(
         menu_title=None,
-        options=["Vista Proy.","Ingresos", "Consulta"],
-        icons=["kanban-fill", "cash-coin", "search"],
+        options=["Vista Proy.","Ingresos", "Consulta","Proyectos", "Mensual"],
+        icons=["kanban-fill", "cash-coin", "search", "kanban", "calendar-month"],
         default_index=0,
         orientation="horizontal",)
 
@@ -1335,7 +1335,7 @@ else:
         selected = option_menu(
         menu_title=None,
         options=["Vista Dep.","Consulta","Departamentos"],
-        icons=["diagram-3-fill", "building"],
+        icons=["diagram-3-fill", "search","building"],
         default_index=0,
         orientation="horizontal",)
 
@@ -3697,6 +3697,10 @@ else:
                 df_real_f.loc[df_real_f["Categoria_A"] == "INGRESO", "Neto_A"]
                 .sum()
             )
+            ingreso_ppt_total = (
+                df_ppt_f.loc[df_ppt_f["Categoria_A"] == "INGRESO", "Neto_A"]
+                .sum()
+            )
             if cuenta_seleccionada != "TODAS":
                 df_ppt_f = df_ppt_f[df_ppt_f["Cuenta_Nombre_A"] == cuenta_seleccionada]
                 df_real_f = df_real_f[df_real_f["Cuenta_Nombre_A"] == cuenta_seleccionada]
@@ -3719,13 +3723,9 @@ else:
                 .fillna(0)
             )
 
-            tabla["DIF"] = tabla["REAL"] - tabla["PPT"]
-            tabla["%"] = np.where(tabla["PPT"] != 0, (tabla["REAL"] / tabla["PPT"]) - 1, 0)
-            tabla["%Ingreso"] = np.where(
-                ingreso_real_total != 0,
-                tabla["DIF"] / ingreso_real_total,
-                0
-            )
+            tabla["DIF PPT"] = tabla["REAL"] - tabla["PPT"]
+            tabla["PPT AJUSTAD0"] = (tabla["PPT"] / ingreso_ppt_total) * ingreso_real_total
+            tabla["DIF AJUSTADO"] = tabla["REAL"] - tabla["PPT AJUSTAD0"]
 
             st.subheader("Consulta por Cuenta")
 
@@ -3733,9 +3733,9 @@ else:
                 tabla.style.format({
                     "PPT": "${:,.2f}",
                     "REAL": "${:,.2f}",
-                    "DIF": "${:,.2f}",
-                    "%": "{:.2%}",
-                    "%Ingreso": "{:.2%}",
+                    "PPT AJUSTADO": "${:,.2f}",
+                    "DIF PPT": "${:,.2f}",
+                    "DIF AJUSTADO": "${:,.2f}",
                 }),
                 use_container_width=True
             )
@@ -6364,6 +6364,7 @@ else:
             return out_show
 
         tabla_diferencias(df_ppt, df_base)
+
 
 
 
