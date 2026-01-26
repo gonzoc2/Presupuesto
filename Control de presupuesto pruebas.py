@@ -3736,8 +3736,8 @@ else:
             )
 
             tabla["DIF PPT"] = tabla["REAL"] - tabla["PPT"]
-            tabla["PPT AJUSTAD0"] = (tabla["PPT"] / ingreso_ppt_total) * ingreso_real_total
-            tabla["DIF AJUSTADO"] = tabla["REAL"] - tabla["PPT AJUSTAD0"]
+            tabla["PPT AJUSTADO"] = (tabla["PPT"] / ingreso_ppt_total) * ingreso_real_total
+            tabla["DIF AJUSTADO"] = tabla["REAL"] - tabla["PPT AJUSTADO"]
 
             st.subheader("Consulta por Cuenta")
 
@@ -6376,6 +6376,7 @@ else:
             return out_show
 
         tabla_diferencias(df_ppt, df_base)
+
 
 
 
