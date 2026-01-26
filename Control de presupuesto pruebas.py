@@ -3693,12 +3693,24 @@ else:
                 (df_real["CeCo_A"].isin(cecos_str)) &
                 (df_real["Proyecto_A"].isin(proy_str))
             ].copy()
+
+            df_real_i = df_real[
+                (df_real["Mes_A"].isin(meses_seleccionado)) &
+                (df_real["Proyecto_A"].isin(proy_str))
+            ].copy()
+
+            df_ppt_i = df_ppt[
+                (df_ppt["Mes_A"].isin(meses_seleccionado)) &
+                (df_ppt["Proyecto_A"].isin(proy_str))
+            ].copy()
+
+
             ingreso_real_total = (
-                df_real_f.loc[df_real_f["Categoria_A"] == "INGRESO", "Neto_A"]
+                df_real_i.loc[df_real_i["Categoria_A"] == "INGRESO", "Neto_A"]
                 .sum()
             )
             ingreso_ppt_total = (
-                df_ppt_f.loc[df_ppt_f["Categoria_A"] == "INGRESO", "Neto_A"]
+                df_ppt_i.loc[df_ppt_i["Categoria_A"] == "INGRESO", "Neto_A"]
                 .sum()
             )
             if cuenta_seleccionada != "TODAS":
@@ -6364,6 +6376,7 @@ else:
             return out_show
 
         tabla_diferencias(df_ppt, df_base)
+
 
 
 
